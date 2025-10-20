@@ -28,13 +28,21 @@ resilience4j:
         wait-duration-in-open-state: 5s
         sliding-window-type: COUNT_BASED
 
+
+
+
 management:
-  health:
-    circuitbreakers:
-      enabled: true
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+      base-path: /actuator
   endpoint:
     health:
       show-details: always
+  health:
+    circuitbreakers:
+      enabled: true
 
 
 
