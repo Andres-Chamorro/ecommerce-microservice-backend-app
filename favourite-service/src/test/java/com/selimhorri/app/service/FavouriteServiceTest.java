@@ -12,6 +12,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.List;
+import java.util.stream.Collectors;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -118,7 +119,7 @@ class FavouriteServiceTest {
         List<Favourite> result = favouriteRepository.findAll();
         List<Favourite> userFavourites = result.stream()
                 .filter(fav -> fav.getUserId().equals(1))
-                .toList();
+                .collect(Collectors.toList());
 
         // Then
         assertThat(userFavourites).hasSize(2);
@@ -142,7 +143,7 @@ class FavouriteServiceTest {
         List<Favourite> result = favouriteRepository.findAll();
         List<Favourite> productFavourites = result.stream()
                 .filter(fav -> fav.getProductId().equals(100))
-                .toList();
+                .collect(Collectors.toList());
 
         // Then
         assertThat(productFavourites).hasSize(2);
