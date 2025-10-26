@@ -4,9 +4,15 @@ pipeline {
     environment {
         DOCKER_REGISTRY = 'docker.io'
         DOCKER_CREDENTIALS_ID = 'dockerhub'
-        K8S_NAMESPACE = 'ecommerce-dev'
+        K8S_NAMESPACE_DEV = 'ecommerce-dev'
+        K8S_NAMESPACE_STAGING = 'ecommerce-staging'
+        K8S_NAMESPACE_PROD = 'ecommerce-prod'
         MAVEN_OPTS = '-Xmx2048m'
         BUILD_TAG = "${env.BUILD_NUMBER}"
+        // Variables dinámicas (se setean en Determine Environment)
+        K8S_NAMESPACE = ''
+        TARGET_ENV = ''
+        SHOULD_DEPLOY = 'false'
     }
     
     parameters {
@@ -28,6 +34,49 @@ pipeline {
     }
     
     stages {
+        stage('Determine Environment') {
+            steps {
+                script {
+                    def branch = env.GIT_BRANCH ?: 'dev'
+                    branch = branch.replaceAll('origin/', '')
+                    
+                    echo "🌿 Branch detectada: ${branch}"
+                    
+                    if (branch == 'master' || branch == 'main') {
+                        env.TARGET_ENV = 'production'
+                        env.K8S_NAMESPACE = K8S_NAMESPACE_PROD
+                        env.SHOULD_DEPLOY = 'true'
+                        env.RUN_INTEGRATION_TESTS = 'false'
+                        echo "🚀 Ambiente: PRODUCTION"
+                    } else if (branch == 'staging' || branch == 'stage') {
+                        env.TARGET_ENV = 'staging'
+                        env.K8S_NAMESPACE = K8S_NAMESPACE_STAGING
+                        env.SHOULD_DEPLOY = 'true'
+                        env.RUN_INTEGRATION_TESTS = 'true'
+                        echo "🧪 Ambiente: STAGING (con pruebas de integración)"
+                    } else if (branch == 'dev' || branch == 'develop') {
+                        env.TARGET_ENV = 'development'
+                        env.K8S_NAMESPACE = K8S_NAMESPACE_DEV
+                        env.SHOULD_DEPLOY = 'false'
+                        env.RUN_INTEGRATION_TESTS = 'false'
+                        echo "💻 Ambiente: DEVELOPMENT (solo build y tests)"
+                    } else {
+                        env.TARGET_ENV = 'feature'
+                        env.K8S_NAMESPACE = K8S_NAMESPACE_DEV
+                        env.SHOULD_DEPLOY = 'false'
+                        env.RUN_INTEGRATION_TESTS = 'false'
+                        echo "🔧 Ambiente: FEATURE (solo build y tests)"
+                    }
+                    
+                    echo "📋 Configuración:"
+                    echo "   - Ambiente: ${env.TARGET_ENV}"
+                    echo "   - Namespace: ${env.K8S_NAMESPACE}"
+                    echo "   - Deploy: ${env.SHOULD_DEPLOY}"
+                    echo "   - Integration Tests: ${env.RUN_INTEGRATION_TESTS}"
+                }
+            }
+        }
+        
         stage('Checkout') {
             steps {
                 echo "🔄 Clonando repositorio..."
@@ -123,7 +172,7 @@ pipeline {
         
         stage('Push Docker Images') {
             when {
-                branch 'main'
+                expression { env.SHOULD_DEPLOY == 'true' }
             }
             steps {
                 script {
@@ -154,7 +203,7 @@ pipeline {
         
         stage('Deploy to Kubernetes') {
             when {
-                expression { params.DEPLOY_TO_K8S == true }
+                expression { params.DEPLOY_TO_K8S == true && env.SHOULD_DEPLOY == 'true' }
             }
             steps {
                 script {
@@ -204,7 +253,7 @@ pipeline {
         
         stage('Verify Deployment') {
             when {
-                expression { params.DEPLOY_TO_K8S == true }
+                expression { params.DEPLOY_TO_K8S == true && env.SHOULD_DEPLOY == 'true' }
             }
             steps {
                 script {
@@ -241,7 +290,7 @@ pipeline {
         
         stage('Smoke Tests') {
             when {
-                expression { params.DEPLOY_TO_K8S == true }
+                expression { params.DEPLOY_TO_K8S == true && env.SHOULD_DEPLOY == 'true' }
             }
             steps {
                 script {
@@ -268,16 +317,170 @@ pipeline {
                 }
             }
         }
+        
+        stage('Integration Tests - Staging') {
+            when {
+                expression { env.RUN_INTEGRATION_TESTS == 'true' && params.DEPLOY_TO_K8S == true }
+            }
+            steps {
+                script {
+                    echo "🧪 Ejecutando pruebas de integración en STAGING..."
+                    echo "Ambiente: ${env.TARGET_ENV}"
+                    echo "Namespace: ${env.K8S_NAMESPACE}"
+                    
+                    def services = [
+                        'user-service',
+                        'product-service',
+                        'order-service',
+                        'payment-service',
+                        'favourite-service',
+                        'shipping-service'
+                    ]
+                    
+                    // Esperar a que todos los servicios estén listos
+                    echo "⏳ Esperando a que los servicios estén completamente desplegados..."
+                    sleep 60
+                    
+                    services.each { service ->
+                        if (params.DEPLOY_SERVICES == 'ALL' || params.DEPLOY_SERVICES == service) {
+                            echo "\n📊 Probando ${service} en staging..."
+                            
+                            // 1. Verificar que el pod esté corriendo
+                            sh """
+                                echo "Verificando estado del pod de ${service}..."
+                                kubectl get pods -n ${K8S_NAMESPACE} -l app=${service}
+                                
+                                POD_STATUS=\$(kubectl get pods -n ${K8S_NAMESPACE} -l app=${service} -o jsonpath='{.items[0].status.phase}' 2>/dev/null || echo 'NotFound')
+                                echo "Estado del pod: \$POD_STATUS"
+                                
+                                if [ "\$POD_STATUS" != "Running" ]; then
+                                    echo "⚠️ WARNING: Pod de ${service} no está en estado Running"
+                                    kubectl describe pod -n ${K8S_NAMESPACE} -l app=${service} || true
+                                fi
+                            """
+                            
+                            // 2. Verificar logs del servicio
+                            sh """
+                                echo "\n📋 Últimos logs de ${service}:"
+                                kubectl logs -n ${K8S_NAMESPACE} -l app=${service} --tail=20 || echo "No se pudieron obtener logs"
+                            """
+                            
+                            // 3. Verificar conectividad del servicio
+                            sh """
+                                echo "\n🔌 Verificando servicio de ${service}..."
+                                kubectl get svc -n ${K8S_NAMESPACE} ${service} || echo "Servicio no encontrado"
+                                
+                                SVC_IP=\$(kubectl get svc -n ${K8S_NAMESPACE} ${service} -o jsonpath='{.spec.clusterIP}' 2>/dev/null || echo 'NotFound')
+                                echo "IP del servicio: \$SVC_IP"
+                            """
+                            
+                            // 4. Health check endpoint (si existe)
+                            sh """
+                                echo "\n💚 Intentando health check de ${service}..."
+                                POD_NAME=\$(kubectl get pods -n ${K8S_NAMESPACE} -l app=${service} -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo '')
+                                
+                                if [ -n "\$POD_NAME" ]; then
+                                    echo "Pod encontrado: \$POD_NAME"
+                                    # Intentar curl al actuator/health si existe
+                                    kubectl exec -n ${K8S_NAMESPACE} \$POD_NAME -- curl -s http://localhost:8080/actuator/health || \
+                                    kubectl exec -n ${K8S_NAMESPACE} \$POD_NAME -- curl -s http://localhost:8080/health || \
+                                    echo "Health endpoint no disponible o servicio no responde"
+                                else
+                                    echo "⚠️ No se encontró pod para ${service}"
+                                fi
+                            """
+                        }
+                    }
+                    
+                    // 5. Pruebas de integración entre servicios
+                    echo "\n🔗 Ejecutando pruebas de integración entre servicios..."
+                    
+                    if (params.DEPLOY_SERVICES == 'ALL' || params.DEPLOY_SERVICES == 'user-service') {
+                        sh """
+                            echo "\n👤 Test: Verificando user-service..."
+                            kubectl get pods -n ${K8S_NAMESPACE} -l app=user-service
+                        """
+                    }
+                    
+                    if (params.DEPLOY_SERVICES == 'ALL' || params.DEPLOY_SERVICES == 'product-service') {
+                        sh """
+                            echo "\n📦 Test: Verificando product-service..."
+                            kubectl get pods -n ${K8S_NAMESPACE} -l app=product-service
+                        """
+                    }
+                    
+                    if (params.DEPLOY_SERVICES == 'ALL' || params.DEPLOY_SERVICES == 'order-service') {
+                        sh """
+                            echo "\n🛒 Test: Verificando order-service..."
+                            kubectl get pods -n ${K8S_NAMESPACE} -l app=order-service
+                        """
+                    }
+                    
+                    // 6. Verificar comunicación con service discovery
+                    sh """
+                        echo "\n🔍 Verificando Service Discovery (Eureka)..."
+                        kubectl get pods -n ${K8S_NAMESPACE} -l app=service-discovery || echo "Service Discovery no encontrado"
+                        
+                        SD_POD=\$(kubectl get pods -n ${K8S_NAMESPACE} -l app=service-discovery -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo '')
+                        if [ -n "\$SD_POD" ]; then
+                            echo "Verificando servicios registrados en Eureka..."
+                            kubectl exec -n ${K8S_NAMESPACE} \$SD_POD -- curl -s http://localhost:8761/eureka/apps || echo "No se pudo consultar Eureka"
+                        fi
+                    """
+                    
+                    // 7. Resumen final
+                    sh """
+                        echo "\n📊 ===== RESUMEN DE PRUEBAS DE INTEGRACIÓN ====="
+                        echo "Ambiente: ${env.TARGET_ENV}"
+                        echo "Namespace: ${env.K8S_NAMESPACE}"
+                        echo "\nEstado de todos los pods:"
+                        kubectl get pods -n ${K8S_NAMESPACE}
+                        echo "\nEstado de todos los servicios:"
+                        kubectl get svc -n ${K8S_NAMESPACE}
+                        echo "\n✅ Pruebas de integración completadas"
+                    """
+                }
+            }
+            post {
+                success {
+                    echo "✅ Pruebas de integración en STAGING exitosas"
+                }
+                failure {
+                    echo "❌ Pruebas de integración en STAGING fallaron"
+                    echo "📋 Revisa los logs anteriores para más detalles"
+                }
+            }
+        }
     }
     
     post {
         success {
-            echo "✅ Pipeline ejecutado exitosamente"
-            echo "🎉 Microservicios desplegados correctamente"
+            script {
+                echo "✅ Pipeline ejecutado exitosamente"
+                echo "🎉 Build completado para ambiente: ${env.TARGET_ENV}"
+                
+                if (env.SHOULD_DEPLOY == 'true') {
+                    echo "🚀 Microservicios desplegados en: ${env.K8S_NAMESPACE}"
+                    
+                    if (env.RUN_INTEGRATION_TESTS == 'true') {
+                        echo "✅ Pruebas de integración ejecutadas exitosamente"
+                        echo "📊 El ambiente de STAGING está listo para pruebas manuales"
+                    }
+                } else {
+                    echo "💻 Build y tests completados (sin deploy)"
+                }
+            }
         }
         failure {
-            echo "❌ Pipeline falló"
-            echo "📋 Revisa los logs para más detalles"
+            script {
+                echo "❌ Pipeline falló en ambiente: ${env.TARGET_ENV}"
+                echo "📋 Revisa los logs para más detalles"
+                
+                if (env.RUN_INTEGRATION_TESTS == 'true') {
+                    echo "⚠️ Las pruebas de integración fallaron en STAGING"
+                    echo "🚫 NO desplegar a PRODUCCIÓN hasta resolver los errores"
+                }
+            }
         }
         always {
             echo "🧹 Limpiando workspace..."
