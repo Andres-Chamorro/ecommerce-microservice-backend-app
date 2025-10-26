@@ -2,6 +2,8 @@ pipeline {
     agent any
     
     environment {
+        JAVA_HOME = '/usr/lib/jvm/java-17-openjdk-amd64'
+        PATH = "${JAVA_HOME}/bin:${env.PATH}"
         DOCKER_REGISTRY = 'docker.io'
         DOCKER_CREDENTIALS_ID = 'dockerhub'
         K8S_NAMESPACE_DEV = 'ecommerce-dev'
