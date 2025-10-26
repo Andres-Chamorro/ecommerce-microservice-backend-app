@@ -110,6 +110,8 @@
 		<module>order-service</module>
 		<module>shipping-service</module>
 		<module>payment-service</module>
+		<module>tests/integration</module>
+		<module>tests/e2e</module>
 	</modules>
 	
 	<build>
