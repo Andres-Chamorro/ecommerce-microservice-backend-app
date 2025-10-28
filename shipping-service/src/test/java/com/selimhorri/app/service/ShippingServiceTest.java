@@ -12,7 +12,6 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
-import java.util.stream.Collectors;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -118,7 +117,7 @@ class ShippingServiceTest {
         List<OrderItem> result = orderItemRepository.findAll();
         List<OrderItem> filtered = result.stream()
                 .filter(item -> item.getOrderId().equals(100))
-                .collect(Collectors.toList());
+                .toList();
 
         // Then
         assertThat(filtered).isNotEmpty();

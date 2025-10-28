@@ -4,8 +4,16 @@ pipeline {
     environment {
         JAVA_HOME = '/usr/lib/jvm/java-17-openjdk-amd64'
         PATH = "${JAVA_HOME}/bin:${env.PATH}"
+        // GCP Configuration
+        GCP_PROJECT_ID = credentials('gcp-project-id')
+        GCP_REGION = 'us-central1'
+        GCP_ZONE = 'us-central1-a'
+        GCP_REGISTRY = "${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/ecommerce-registry"
+        GKE_CLUSTER = 'ecommerce-staging-cluster'
+        // Docker
         DOCKER_REGISTRY = 'docker.io'
         DOCKER_CREDENTIALS_ID = 'dockerhub'
+        // Kubernetes
         K8S_NAMESPACE_DEV = 'ecommerce-dev'
         K8S_NAMESPACE_STAGING = 'ecommerce-staging'
         K8S_NAMESPACE_PROD = 'ecommerce-prod'
@@ -15,6 +23,7 @@ pipeline {
         K8S_NAMESPACE = ''
         TARGET_ENV = ''
         SHOULD_DEPLOY = 'false'
+        USE_GCP = 'false'
     }
     
     parameters {
@@ -49,13 +58,15 @@ pipeline {
                         env.K8S_NAMESPACE = K8S_NAMESPACE_PROD
                         env.SHOULD_DEPLOY = 'true'
                         env.RUN_INTEGRATION_TESTS = 'false'
-                        echo "🚀 Ambiente: PRODUCTION"
+                        env.USE_GCP = 'true'
+                        echo "🚀 Ambiente: PRODUCTION (GCP)"
                     } else if (branch == 'staging' || branch == 'stage') {
                         env.TARGET_ENV = 'staging'
                         env.K8S_NAMESPACE = K8S_NAMESPACE_STAGING
                         env.SHOULD_DEPLOY = 'true'
                         env.RUN_INTEGRATION_TESTS = 'true'
-                        echo "🧪 Ambiente: STAGING (con pruebas de integración)"
+                        env.USE_GCP = 'true'
+                        echo "🧪 Ambiente: STAGING (GCP con pruebas de integración)"
                     } else if (branch == 'dev' || branch == 'develop') {
                         env.TARGET_ENV = 'development'
                         env.K8S_NAMESPACE = K8S_NAMESPACE_DEV
@@ -146,6 +157,26 @@ pipeline {
             }
         }
         
+        stage('Authenticate with GCP') {
+            when {
+                expression { env.USE_GCP == 'true' && env.SHOULD_DEPLOY == 'true' }
+            }
+            steps {
+                script {
+                    echo "🔐 Autenticando con GCP..."
+                    withCredentials([file(credentialsId: 'gcp-service-account', variable: 'GCP_KEY')]) {
+                        sh """
+                            gcloud auth activate-service-account --key-file=\${GCP_KEY}
+                            gcloud config set project ${GCP_PROJECT_ID}
+                            gcloud auth configure-docker ${GCP_REGION}-docker.pkg.dev
+                            gcloud container clusters get-credentials ${GKE_CLUSTER} --zone=${GCP_ZONE}
+                        """
+                    }
+                    echo "✅ Autenticación con GCP exitosa"
+                }
+            }
+        }
+        
         stage('Build Docker Images') {
             steps {
                 script {
@@ -159,13 +190,22 @@ pipeline {
                         'shipping-service'
                     ]
                     
+                    def registry = (env.USE_GCP == 'true') ? GCP_REGISTRY : ''
+                    
                     services.each { service ->
                         if (params.DEPLOY_SERVICES == 'ALL' || params.DEPLOY_SERVICES == service) {
                             echo "Building Docker image for ${service}..."
-                            sh """
-                                docker build -t ecommerce-${service}:${BUILD_TAG} -f ${service}/Dockerfile .
-                                docker tag ecommerce-${service}:${BUILD_TAG} ecommerce-${service}:latest
-                            """
+                            if (env.USE_GCP == 'true') {
+                                sh """
+                                    docker build -t ${registry}/ecommerce-${service}:${BUILD_TAG} -f ${service}/Dockerfile .
+                                    docker tag ${registry}/ecommerce-${service}:${BUILD_TAG} ${registry}/ecommerce-${service}:latest
+                                """
+                            } else {
+                                sh """
+                                    docker build -t ecommerce-${service}:${BUILD_TAG} -f ${service}/Dockerfile .
+                                    docker tag ecommerce-${service}:${BUILD_TAG} ecommerce-${service}:latest
+                                """
+                            }
                         }
                     }
                 }
@@ -178,7 +218,6 @@ pipeline {
             }
             steps {
                 script {
-                    echo "📤 Subiendo imágenes a Docker Registry..."
                     def services = [
                         'user-service',
                         'product-service',
@@ -188,14 +227,28 @@ pipeline {
                         'shipping-service'
                     ]
                     
-                    docker.withRegistry("https://${DOCKER_REGISTRY}", DOCKER_CREDENTIALS_ID) {
+                    if (env.USE_GCP == 'true') {
+                        echo "📤 Subiendo imágenes a GCP Artifact Registry..."
                         services.each { service ->
                             if (params.DEPLOY_SERVICES == 'ALL' || params.DEPLOY_SERVICES == service) {
-                                echo "Pushing ${service}..."
+                                echo "Pushing ${service} to GCP..."
                                 sh """
-                                    docker push ecommerce-${service}:${BUILD_TAG}
-                                    docker push ecommerce-${service}:latest
+                                    docker push ${GCP_REGISTRY}/ecommerce-${service}:${BUILD_TAG}
+                                    docker push ${GCP_REGISTRY}/ecommerce-${service}:latest
                                 """
+                            }
+                        }
+                    } else {
+                        echo "📤 Subiendo imágenes a Docker Hub..."
+                        docker.withRegistry("https://${DOCKER_REGISTRY}", DOCKER_CREDENTIALS_ID) {
+                            services.each { service ->
+                                if (params.DEPLOY_SERVICES == 'ALL' || params.DEPLOY_SERVICES == service) {
+                                    echo "Pushing ${service}..."
+                                    sh """
+                                        docker push ecommerce-${service}:${BUILD_TAG}
+                                        docker push ecommerce-${service}:latest
+                                    """
+                                }
                             }
                         }
                     }
