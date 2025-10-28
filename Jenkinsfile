@@ -1,10 +1,5 @@
 pipeline {
-    agent {
-        docker {
-            image 'maven:3.8.6-openjdk-11'
-            args '-v /var/run/docker.sock:/var/run/docker.sock -v /usr/bin/docker:/usr/bin/docker'
-        }
-    }
+    agent any
     
     environment {
         // GCP Configuration
@@ -97,6 +92,25 @@ pipeline {
             steps {
                 echo "🔄 Clonando repositorio..."
                 checkout scm
+            }
+        }
+        
+        stage('Setup Maven') {
+            steps {
+                script {
+                    echo "🔧 Verificando Maven..."
+                    sh '''
+                        if ! command -v mvn &> /dev/null; then
+                            echo "Maven no encontrado, instalando..."
+                            apt-get update && apt-get install -y maven || \
+                            yum install -y maven || \
+                            echo "No se pudo instalar Maven automáticamente"
+                        else
+                            echo "Maven ya está instalado"
+                            mvn --version
+                        fi
+                    '''
+                }
             }
         }
         
