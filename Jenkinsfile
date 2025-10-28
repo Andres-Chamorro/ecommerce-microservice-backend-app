@@ -3,7 +3,7 @@ pipeline {
     
     environment {
         // Java Configuration
-        JAVA_HOME = '/usr/lib/jvm/java-11-openjdk-amd64'
+        JAVA_HOME = '/usr/lib/jvm/java-17-openjdk-amd64'
         PATH = "${JAVA_HOME}/bin:${env.PATH}"
         // GCP Configuration
         GCP_PROJECT_ID = credentials('gcp-project-id')
@@ -103,12 +103,12 @@ pipeline {
                 script {
                     echo "🔧 Instalando herramientas de build..."
                     sh '''
-                        # Instalar Java 11 y Maven
+                        # Instalar Java 17 y Maven
                         apt-get update
-                        apt-get install -y openjdk-11-jdk maven
+                        apt-get install -y openjdk-17-jdk maven
                         
-                        # Configurar Java 11 como default
-                        export JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64
+                        # Configurar Java 17 como default
+                        export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
                         export PATH=$JAVA_HOME/bin:$PATH
                         
                         echo "Java version:"
