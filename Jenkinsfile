@@ -2,6 +2,9 @@ pipeline {
     agent any
     
     environment {
+        // Java Configuration
+        JAVA_HOME = '/usr/lib/jvm/java-11-openjdk-amd64'
+        PATH = "${JAVA_HOME}/bin:${env.PATH}"
         // GCP Configuration
         GCP_PROJECT_ID = credentials('gcp-project-id')
         GCP_REGION = 'us-central1'
@@ -95,20 +98,23 @@ pipeline {
             }
         }
         
-        stage('Setup Maven') {
+        stage('Setup Build Tools') {
             steps {
                 script {
-                    echo "🔧 Verificando Maven..."
+                    echo "🔧 Instalando herramientas de build..."
                     sh '''
-                        if ! command -v mvn &> /dev/null; then
-                            echo "Maven no encontrado, instalando..."
-                            apt-get update && apt-get install -y maven || \
-                            yum install -y maven || \
-                            echo "No se pudo instalar Maven automáticamente"
-                        else
-                            echo "Maven ya está instalado"
-                            mvn --version
-                        fi
+                        # Instalar Java 11 y Maven
+                        apt-get update
+                        apt-get install -y openjdk-11-jdk maven
+                        
+                        # Configurar Java 11 como default
+                        export JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64
+                        export PATH=$JAVA_HOME/bin:$PATH
+                        
+                        echo "Java version:"
+                        java -version
+                        echo "Maven version:"
+                        mvn --version
                     '''
                 }
             }
