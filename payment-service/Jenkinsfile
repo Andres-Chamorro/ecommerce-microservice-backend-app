@@ -30,7 +30,9 @@ pipeline {
                 script {
                     echo "🔨 Compilando ${SERVICE_NAME}..."
                     def testFlag = params.SKIP_TESTS ? '-DskipTests' : ''
-                    sh "mvn clean package ${testFlag} -pl . -am"
+                    dir('payment-service') {
+                        sh "mvn clean package ${testFlag}"
+                    }
                 }
             }
         }
@@ -38,12 +40,16 @@ pipeline {
         stage('Unit Tests') {
             when { expression { params.SKIP_TESTS == false } }
             steps {
-                echo "🧪 Ejecutando pruebas unitarias de ${SERVICE_NAME}..."
-                sh 'mvn test -pl . -am'
+                script {
+                    echo "🧪 Ejecutando pruebas unitarias de ${SERVICE_NAME}..."
+                    dir('payment-service') {
+                        sh 'mvn test'
+                    }
+                }
             }
             post {
                 always {
-                    junit allowEmptyResults: true, testResults: '**/target/surefire-reports/*.xml'
+                    junit allowEmptyResults: true, testResults: 'payment-service/target/surefire-reports/*.xml'
                 }
             }
         }
@@ -52,10 +58,12 @@ pipeline {
             steps {
                 script {
                     echo "🐳 Construyendo imagen Docker de ${SERVICE_NAME}..."
-                    sh """
-                        docker build -t ${SERVICE_NAME}:${BUILD_TAG} -f Dockerfile .
-                        docker tag ${SERVICE_NAME}:${BUILD_TAG} ${SERVICE_NAME}:latest
-                    """
+                    dir('payment-service') {
+                        sh """
+                            docker build -t ${SERVICE_NAME}:${BUILD_TAG} -f Dockerfile .
+                            docker tag ${SERVICE_NAME}:${BUILD_TAG} ${SERVICE_NAME}:latest
+                        """
+                    }
                 }
             }
         }
@@ -68,7 +76,7 @@ pipeline {
                     sh """
                         . /root/google-cloud-sdk/path.bash.inc
                         kubectl create namespace ${K8S_NAMESPACE} --dry-run=client -o yaml | kubectl apply -f -
-                        kubectl apply -f ../k8s/microservices/${SERVICE_NAME}-deployment.yaml -n ${K8S_NAMESPACE}
+                        kubectl apply -f k8s/microservices/${SERVICE_NAME}-deployment.yaml -n ${K8S_NAMESPACE}
                         kubectl rollout status deployment/${SERVICE_NAME} -n ${K8S_NAMESPACE} --timeout=180s || echo "⚠️ ${SERVICE_NAME} no está listo"
                     """
                 }
