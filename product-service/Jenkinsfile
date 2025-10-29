@@ -1,0 +1,104 @@
+pipeline {
+    agent any
+    
+    environment {
+        JAVA_HOME = '/usr/lib/jvm/java-17-openjdk-amd64'
+        PATH = "/root/google-cloud-sdk/bin:${JAVA_HOME}/bin:${env.PATH}"
+        USE_GKE_GCLOUD_AUTH_PLUGIN = 'True'
+        K8S_NAMESPACE = 'ecommerce-staging'
+        SERVICE_NAME = 'product-service'
+        SERVICE_PORT = '8500'
+        MAVEN_OPTS = '-Xmx2048m'
+        BUILD_TAG = "${env.BUILD_NUMBER}"
+    }
+    
+    parameters {
+        booleanParam(name: 'SKIP_TESTS', defaultValue: false, description: 'Saltar pruebas unitarias')
+        booleanParam(name: 'DEPLOY_TO_K8S', defaultValue: true, description: 'Desplegar en Kubernetes')
+    }
+    
+    stages {
+        stage('Checkout') {
+            steps {
+                echo "🔄 Clonando repositorio de ${SERVICE_NAME}..."
+                checkout scm
+            }
+        }
+        
+        stage('Build Service') {
+            steps {
+                script {
+                    echo "🔨 Compilando ${SERVICE_NAME}..."
+                    def testFlag = params.SKIP_TESTS ? '-DskipTests' : ''
+                    sh "mvn clean package ${testFlag}"
+                }
+            }
+        }
+        
+        stage('Unit Tests') {
+            when { expression { params.SKIP_TESTS == false } }
+            steps {
+                echo "🧪 Ejecutando pruebas unitarias de ${SERVICE_NAME}..."
+                sh 'mvn test'
+            }
+            post {
+                always {
+                    junit allowEmptyResults: true, testResults: '**/target/surefire-reports/*.xml'
+                }
+            }
+        }
+        
+        stage('Build Docker Image') {
+            steps {
+                script {
+                    echo "🐳 Construyendo imagen Docker de ${SERVICE_NAME}..."
+                    sh """
+                        docker build -t ${SERVICE_NAME}:${BUILD_TAG} -f Dockerfile ..
+                        docker tag ${SERVICE_NAME}:${BUILD_TAG} ${SERVICE_NAME}:latest
+                    """
+                }
+            }
+        }
+        
+        stage('Deploy to Kubernetes') {
+            when { expression { params.DEPLOY_TO_K8S == true } }
+            steps {
+                script {
+                    echo "☸️ Desplegando ${SERVICE_NAME} en Kubernetes..."
+                    sh """
+                        . /root/google-cloud-sdk/path.bash.inc
+                        kubectl create namespace ${K8S_NAMESPACE} --dry-run=client -o yaml | kubectl apply -f -
+                        kubectl apply -f ../k8s/microservices/${SERVICE_NAME}-deployment.yaml -n ${K8S_NAMESPACE}
+                        kubectl rollout status deployment/${SERVICE_NAME} -n ${K8S_NAMESPACE} --timeout=180s || echo "⚠️ ${SERVICE_NAME} no está listo"
+                    """
+                }
+            }
+        }
+        
+        stage('Integration Tests') {
+            when { expression { params.DEPLOY_TO_K8S == true } }
+            steps {
+                script {
+                    echo "🧪 Ejecutando pruebas de integración de ${SERVICE_NAME}..."
+                    sh """
+                        . /root/google-cloud-sdk/path.bash.inc
+                        kubectl get pods -n ${K8S_NAMESPACE} -l app=${SERVICE_NAME}
+                        POD_STATUS=\$(kubectl get pods -n ${K8S_NAMESPACE} -l app=${SERVICE_NAME} -o jsonpath='{.items[0].status.phase}' 2>/dev/null || echo 'NotFound')
+                        if [ "\$POD_STATUS" = "Running" ]; then
+                            echo "✅ ${SERVICE_NAME} está corriendo correctamente"
+                        else
+                            echo "⚠️ WARNING: ${SERVICE_NAME} no está en estado Running"
+                            exit 1
+                        fi
+                    """
+                }
+            }
+        }
+    }
+    
+    post {
+        always { cleanWs() }
+        success { echo "✅ Pipeline de ${SERVICE_NAME} ejecutado exitosamente" }
+        failure { echo "❌ Pipeline de ${SERVICE_NAME} falló" }
+    }
+}
