@@ -162,7 +162,7 @@ pipeline {
                             # Método alternativo más confiable
                             curl https://sdk.cloud.google.com | bash || echo "Warning: gcloud installation failed, continuing..."
                             if [ -f /root/google-cloud-sdk/path.bash.inc ]; then
-                                source /root/google-cloud-sdk/path.bash.inc
+                                . /root/google-cloud-sdk/path.bash.inc
                                 gcloud components install gke-gcloud-auth-plugin --quiet || echo "Warning: gke-auth-plugin installation failed"
                             fi
                         else
