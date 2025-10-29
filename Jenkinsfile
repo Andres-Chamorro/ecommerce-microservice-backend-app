@@ -319,7 +319,7 @@ pipeline {
                     
                     // Crear namespace si no existe
                     sh """
-                        kubectl create namespace ${K8S_NAMESPACE} --dry-run=client -o yaml | kubectl apply -f -
+                        kubectl create namespace ${env.K8S_NAMESPACE} --dry-run=client -o yaml | kubectl apply -f -
                     """
                     
                     // Desplegar servicios de infraestructura primero
@@ -333,8 +333,8 @@ pipeline {
                     
                     // Esperar a que la infraestructura esté lista
                     sh """
-                        kubectl wait --for=condition=ready pod -l app=zipkin -n ${K8S_NAMESPACE} --timeout=120s || true
-                        kubectl wait --for=condition=ready pod -l app=service-discovery -n ${K8S_NAMESPACE} --timeout=120s || true
+                        kubectl wait --for=condition=ready pod -l app=zipkin -n ${env.K8S_NAMESPACE} --timeout=120s || true
+                        kubectl wait --for=condition=ready pod -l app=service-discovery -n ${env.K8S_NAMESPACE} --timeout=120s || true
                     """
                     
                     // Desplegar microservicios
@@ -343,7 +343,7 @@ pipeline {
                             echo "Desplegando ${service}..."
                             sh """
                                 kubectl apply -f k8s/microservices/${service}-deployment.yaml
-                                kubectl set image deployment/${service} ${service}=ecommerce-${service}:${BUILD_TAG} -n ${K8S_NAMESPACE} --record || true
+                                kubectl set image deployment/${service} ${service}=ecommerce-${service}:${BUILD_TAG} -n ${env.K8S_NAMESPACE} --record || true
                             """
                         }
                     }
@@ -371,7 +371,7 @@ pipeline {
                         if (params.DEPLOY_SERVICES == 'ALL' || params.DEPLOY_SERVICES == service) {
                             echo "Verificando ${service}..."
                             sh """
-                                kubectl rollout status deployment/${service} -n ${K8S_NAMESPACE} --timeout=180s || true
+                                kubectl rollout status deployment/${service} -n ${env.K8S_NAMESPACE} --timeout=180s || true
                             """
                         }
                     }
@@ -379,10 +379,10 @@ pipeline {
                     // Mostrar estado final
                     sh """
                         echo "Estado de los pods:"
-                        kubectl get pods -n ${K8S_NAMESPACE}
+                        kubectl get pods -n ${env.K8S_NAMESPACE}
                         echo ""
                         echo "Estado de los servicios:"
-                        kubectl get svc -n ${K8S_NAMESPACE}
+                        kubectl get svc -n ${env.K8S_NAMESPACE}
                     """
                 }
             }
@@ -410,7 +410,7 @@ pipeline {
                         if (params.DEPLOY_SERVICES == 'ALL' || params.DEPLOY_SERVICES == service) {
                             echo "Testing ${service}..."
                             sh """
-                                kubectl get pods -n ${K8S_NAMESPACE} -l app=${service} || true
+                                kubectl get pods -n ${env.K8S_NAMESPACE} -l app=${service} || true
                             """
                         }
                     }
@@ -448,42 +448,42 @@ pipeline {
                             // 1. Verificar que el pod esté corriendo
                             sh """
                                 echo "Verificando estado del pod de ${service}..."
-                                kubectl get pods -n ${K8S_NAMESPACE} -l app=${service}
+                                kubectl get pods -n ${env.K8S_NAMESPACE} -l app=${service}
                                 
-                                POD_STATUS=\$(kubectl get pods -n ${K8S_NAMESPACE} -l app=${service} -o jsonpath='{.items[0].status.phase}' 2>/dev/null || echo 'NotFound')
+                                POD_STATUS=\$(kubectl get pods -n ${env.K8S_NAMESPACE} -l app=${service} -o jsonpath='{.items[0].status.phase}' 2>/dev/null || echo 'NotFound')
                                 echo "Estado del pod: \$POD_STATUS"
                                 
                                 if [ "\$POD_STATUS" != "Running" ]; then
                                     echo "⚠️ WARNING: Pod de ${service} no está en estado Running"
-                                    kubectl describe pod -n ${K8S_NAMESPACE} -l app=${service} || true
+                                    kubectl describe pod -n ${env.K8S_NAMESPACE} -l app=${service} || true
                                 fi
                             """
                             
                             // 2. Verificar logs del servicio
                             sh """
                                 echo "\n📋 Últimos logs de ${service}:"
-                                kubectl logs -n ${K8S_NAMESPACE} -l app=${service} --tail=20 || echo "No se pudieron obtener logs"
+                                kubectl logs -n ${env.K8S_NAMESPACE} -l app=${service} --tail=20 || echo "No se pudieron obtener logs"
                             """
                             
                             // 3. Verificar conectividad del servicio
                             sh """
                                 echo "\n🔌 Verificando servicio de ${service}..."
-                                kubectl get svc -n ${K8S_NAMESPACE} ${service} || echo "Servicio no encontrado"
+                                kubectl get svc -n ${env.K8S_NAMESPACE} ${service} || echo "Servicio no encontrado"
                                 
-                                SVC_IP=\$(kubectl get svc -n ${K8S_NAMESPACE} ${service} -o jsonpath='{.spec.clusterIP}' 2>/dev/null || echo 'NotFound')
+                                SVC_IP=\$(kubectl get svc -n ${env.K8S_NAMESPACE} ${service} -o jsonpath='{.spec.clusterIP}' 2>/dev/null || echo 'NotFound')
                                 echo "IP del servicio: \$SVC_IP"
                             """
                             
                             // 4. Health check endpoint (si existe)
                             sh """
                                 echo "\n💚 Intentando health check de ${service}..."
-                                POD_NAME=\$(kubectl get pods -n ${K8S_NAMESPACE} -l app=${service} -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo '')
+                                POD_NAME=\$(kubectl get pods -n ${env.K8S_NAMESPACE} -l app=${service} -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo '')
                                 
                                 if [ -n "\$POD_NAME" ]; then
                                     echo "Pod encontrado: \$POD_NAME"
                                     # Intentar curl al actuator/health si existe
-                                    kubectl exec -n ${K8S_NAMESPACE} \$POD_NAME -- curl -s http://localhost:8080/actuator/health || \
-                                    kubectl exec -n ${K8S_NAMESPACE} \$POD_NAME -- curl -s http://localhost:8080/health || \
+                                    kubectl exec -n ${env.K8S_NAMESPACE} \$POD_NAME -- curl -s http://localhost:8080/actuator/health || \
+                                    kubectl exec -n ${env.K8S_NAMESPACE} \$POD_NAME -- curl -s http://localhost:8080/health || \
                                     echo "Health endpoint no disponible o servicio no responde"
                                 else
                                     echo "⚠️ No se encontró pod para ${service}"
@@ -498,33 +498,33 @@ pipeline {
                     if (params.DEPLOY_SERVICES == 'ALL' || params.DEPLOY_SERVICES == 'user-service') {
                         sh """
                             echo "\n👤 Test: Verificando user-service..."
-                            kubectl get pods -n ${K8S_NAMESPACE} -l app=user-service
+                            kubectl get pods -n ${env.K8S_NAMESPACE} -l app=user-service
                         """
                     }
                     
                     if (params.DEPLOY_SERVICES == 'ALL' || params.DEPLOY_SERVICES == 'product-service') {
                         sh """
                             echo "\n📦 Test: Verificando product-service..."
-                            kubectl get pods -n ${K8S_NAMESPACE} -l app=product-service
+                            kubectl get pods -n ${env.K8S_NAMESPACE} -l app=product-service
                         """
                     }
                     
                     if (params.DEPLOY_SERVICES == 'ALL' || params.DEPLOY_SERVICES == 'order-service') {
                         sh """
                             echo "\n🛒 Test: Verificando order-service..."
-                            kubectl get pods -n ${K8S_NAMESPACE} -l app=order-service
+                            kubectl get pods -n ${env.K8S_NAMESPACE} -l app=order-service
                         """
                     }
                     
                     // 6. Verificar comunicación con service discovery
                     sh """
                         echo "\n🔍 Verificando Service Discovery (Eureka)..."
-                        kubectl get pods -n ${K8S_NAMESPACE} -l app=service-discovery || echo "Service Discovery no encontrado"
+                        kubectl get pods -n ${env.K8S_NAMESPACE} -l app=service-discovery || echo "Service Discovery no encontrado"
                         
-                        SD_POD=\$(kubectl get pods -n ${K8S_NAMESPACE} -l app=service-discovery -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo '')
+                        SD_POD=\$(kubectl get pods -n ${env.K8S_NAMESPACE} -l app=service-discovery -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo '')
                         if [ -n "\$SD_POD" ]; then
                             echo "Verificando servicios registrados en Eureka..."
-                            kubectl exec -n ${K8S_NAMESPACE} \$SD_POD -- curl -s http://localhost:8761/eureka/apps || echo "No se pudo consultar Eureka"
+                            kubectl exec -n ${env.K8S_NAMESPACE} \$SD_POD -- curl -s http://localhost:8761/eureka/apps || echo "No se pudo consultar Eureka"
                         fi
                     """
                     
@@ -534,9 +534,9 @@ pipeline {
                         echo "Ambiente: ${env.TARGET_ENV}"
                         echo "Namespace: ${env.K8S_NAMESPACE}"
                         echo "\nEstado de todos los pods:"
-                        kubectl get pods -n ${K8S_NAMESPACE}
+                        kubectl get pods -n ${env.K8S_NAMESPACE}
                         echo "\nEstado de todos los servicios:"
-                        kubectl get svc -n ${K8S_NAMESPACE}
+                        kubectl get svc -n ${env.K8S_NAMESPACE}
                         echo "\n✅ Pruebas de integración completadas"
                     """
                 }
