@@ -56,29 +56,31 @@ pipeline {
                     
                     if (branch == 'master' || branch == 'main') {
                         env.TARGET_ENV = 'production'
-                        env.K8S_NAMESPACE = K8S_NAMESPACE_PROD
+                        env.K8S_NAMESPACE = 'ecommerce-prod'
                         env.SHOULD_DEPLOY = 'true'
                         env.RUN_INTEGRATION_TESTS = 'false'
                         env.USE_GCP = 'true'
                         echo "🚀 Ambiente: PRODUCTION (GCP)"
                     } else if (branch == 'staging' || branch == 'stage') {
                         env.TARGET_ENV = 'staging'
-                        env.K8S_NAMESPACE = K8S_NAMESPACE_STAGING
+                        env.K8S_NAMESPACE = 'ecommerce-staging'
                         env.SHOULD_DEPLOY = 'true'
                         env.RUN_INTEGRATION_TESTS = 'true'
                         env.USE_GCP = 'true'
                         echo "🧪 Ambiente: STAGING (GCP con pruebas de integración)"
                     } else if (branch == 'dev' || branch == 'develop') {
                         env.TARGET_ENV = 'development'
-                        env.K8S_NAMESPACE = K8S_NAMESPACE_DEV
+                        env.K8S_NAMESPACE = 'ecommerce-dev'
                         env.SHOULD_DEPLOY = 'false'
                         env.RUN_INTEGRATION_TESTS = 'false'
+                        env.USE_GCP = 'false'
                         echo "💻 Ambiente: DEVELOPMENT (solo build y tests)"
                     } else {
                         env.TARGET_ENV = 'feature'
-                        env.K8S_NAMESPACE = K8S_NAMESPACE_DEV
+                        env.K8S_NAMESPACE = 'ecommerce-dev'
                         env.SHOULD_DEPLOY = 'false'
                         env.RUN_INTEGRATION_TESTS = 'false'
+                        env.USE_GCP = 'false'
                         echo "🔧 Ambiente: FEATURE (solo build y tests)"
                     }
                     
