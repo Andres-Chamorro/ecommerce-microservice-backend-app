@@ -121,6 +121,9 @@ pipeline {
                 script {
                     echo "🔧 Verificando herramientas de build..."
                     sh '''
+                        # Limpiar repositorios problemáticos de Google Cloud
+                        rm -f /etc/apt/sources.list.d/google-cloud-sdk.list
+                        
                         # Instalar Java 17, Maven y Docker CLI si no existen
                         apt-get update
                         apt-get install -y openjdk-17-jdk maven ca-certificates curl gnupg
