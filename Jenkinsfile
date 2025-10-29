@@ -101,34 +101,39 @@ pipeline {
         stage('Setup Build Tools') {
             steps {
                 script {
-                    echo "🔧 Instalando herramientas de build..."
+                    echo "🔧 Verificando herramientas de build..."
                     sh '''
-                        # Instalar Java 17, Maven y Docker CLI
+                        # Instalar Java 17, Maven y Docker CLI si no existen
                         apt-get update
                         apt-get install -y openjdk-17-jdk maven ca-certificates curl gnupg
                         
-                        # Instalar Docker CLI
-                        install -m 0755 -d /etc/apt/keyrings
-                        curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-                        chmod a+r /etc/apt/keyrings/docker.gpg
-                        
-                        echo \
-                          "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian \
-                          $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
-                          tee /etc/apt/sources.list.d/docker.list > /dev/null
-                        
-                        apt-get update
-                        apt-get install -y docker-ce-cli
+                        # Instalar Docker CLI solo si no está instalado
+                        if ! command -v docker &> /dev/null; then
+                            echo "Instalando Docker CLI..."
+                            install -m 0755 -d /etc/apt/keyrings
+                            curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg 2>/dev/null || true
+                            chmod a+r /etc/apt/keyrings/docker.gpg
+                            
+                            echo \
+                              "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian \
+                              $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
+                              tee /etc/apt/sources.list.d/docker.list > /dev/null
+                            
+                            apt-get update
+                            apt-get install -y docker-ce-cli
+                        else
+                            echo "Docker CLI ya está instalado"
+                        fi
                         
                         # Configurar Java 17 como default
                         export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
                         export PATH=$JAVA_HOME/bin:$PATH
                         
-                        echo "Java version:"
+                        echo "✅ Java version:"
                         java -version
-                        echo "Maven version:"
+                        echo "✅ Maven version:"
                         mvn --version
-                        echo "Docker version:"
+                        echo "✅ Docker version:"
                         docker --version
                     '''
                 }
