@@ -478,8 +478,10 @@ pipeline {
         
         stage('Integration Tests - Staging') {
             when {
-                expression { 
-                    return env.RUN_INTEGRATION_TESTS == 'true' && params.DEPLOY_TO_K8S == true
+                allOf {
+                    expression { return env.RUN_INTEGRATION_TESTS == 'true' }
+                    expression { return params.DEPLOY_TO_K8S == true }
+                    expression { return env.SHOULD_DEPLOY == 'true' }
                 }
             }
             steps {
@@ -614,6 +616,10 @@ pipeline {
     }
     
     post {
+        always {
+            echo "🧹 Limpiando workspace..."
+            cleanWs()
+        }
         success {
             script {
                 def targetEnv = env.TARGET_ENV ?: 'unknown'
@@ -623,7 +629,7 @@ pipeline {
                 echo "🎉 Build completado para ambiente: ${targetEnv}"
                 
                 if (env.SHOULD_DEPLOY == 'true') {
-                    echo "🚀 Microservicios desplegados en: ${k8sNamespace}"
+                    echo "� Mic roservicios desplegados en: ${k8sNamespace}"
                     
                     if (env.RUN_INTEGRATION_TESTS == 'true') {
                         echo "✅ Pruebas de integración ejecutadas exitosamente"
@@ -645,10 +651,6 @@ pipeline {
                     echo "🚫 NO desplegar a PRODUCCIÓN hasta resolver los errores"
                 }
             }
-        }
-        always {
-            echo "🧹 Limpiando workspace..."
-            cleanWs()
         }
     }
 }
