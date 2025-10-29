@@ -58,12 +58,10 @@ pipeline {
             steps {
                 script {
                     echo "🐳 Construyendo imagen Docker de ${SERVICE_NAME}..."
-                    dir('order-service') {
-                        sh """
-                            docker build -t ${SERVICE_NAME}:${BUILD_TAG} -f Dockerfile .
-                            docker tag ${SERVICE_NAME}:${BUILD_TAG} ${SERVICE_NAME}:latest
-                        """
-                    }
+                    sh """
+                        docker build -t ${SERVICE_NAME}:${BUILD_TAG} -f order-service/Dockerfile .
+                        docker tag ${SERVICE_NAME}:${BUILD_TAG} ${SERVICE_NAME}:latest
+                    """
                 }
             }
         }
