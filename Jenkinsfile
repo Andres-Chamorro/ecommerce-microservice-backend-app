@@ -4,9 +4,10 @@ pipeline {
     environment {
         // Java Configuration
         JAVA_HOME = '/usr/lib/jvm/java-17-openjdk-amd64'
-        PATH = "${JAVA_HOME}/bin:${env.PATH}"
+        PATH = "/root/google-cloud-sdk/bin:${JAVA_HOME}/bin:${env.PATH}"
         
-        // Kubernetes
+        // GCP & Kubernetes
+        USE_GKE_GCLOUD_AUTH_PLUGIN = 'True'
         K8S_NAMESPACE = 'ecommerce-staging'
         
         // Build
@@ -48,6 +49,9 @@ pipeline {
                 script {
                     echo "🔧 Verificando herramientas de build..."
                     sh '''
+                        # Inicializar gcloud
+                        . /root/google-cloud-sdk/path.bash.inc || true
+                        
                         # Instalar herramientas básicas
                         apt-get update || true
                         apt-get install -y openjdk-17-jdk maven curl || true
@@ -59,6 +63,8 @@ pipeline {
                         mvn --version || echo "Maven no disponible"
                         echo "✅ Docker version:"
                         docker --version || echo "Docker no disponible"
+                        echo "✅ gcloud version:"
+                        gcloud version || echo "gcloud no disponible"
                         echo "✅ kubectl version:"
                         kubectl version --client || echo "kubectl no disponible"
                     '''
@@ -162,6 +168,7 @@ pipeline {
                     
                     // Verificar conexión a Kubernetes
                     sh """
+                        . /root/google-cloud-sdk/path.bash.inc
                         echo "🔍 Verificando conexión a Kubernetes..."
                         kubectl cluster-info
                         kubectl get nodes
@@ -169,12 +176,14 @@ pipeline {
                     
                     // Crear namespace si no existe
                     sh """
+                        . /root/google-cloud-sdk/path.bash.inc
                         kubectl create namespace ${K8S_NAMESPACE} --dry-run=client -o yaml | kubectl apply -f -
                     """
                     
                     // Desplegar servicios de infraestructura primero
                     echo "📦 Desplegando servicios de infraestructura..."
                     sh """
+                        . /root/google-cloud-sdk/path.bash.inc
                         kubectl apply -f k8s/infrastructure/zipkin-deployment.yaml -n ${K8S_NAMESPACE}
                         kubectl apply -f k8s/infrastructure/service-discovery-deployment.yaml -n ${K8S_NAMESPACE}
                         kubectl apply -f k8s/infrastructure/cloud-config-deployment.yaml -n ${K8S_NAMESPACE}
@@ -184,6 +193,7 @@ pipeline {
                     // Esperar a que la infraestructura esté lista
                     echo "⏳ Esperando a que la infraestructura esté lista..."
                     sh """
+                        . /root/google-cloud-sdk/path.bash.inc
                         kubectl wait --for=condition=ready pod -l app=zipkin -n ${K8S_NAMESPACE} --timeout=120s || echo "Zipkin no está listo aún"
                         kubectl wait --for=condition=ready pod -l app=service-discovery -n ${K8S_NAMESPACE} --timeout=120s || echo "Service Discovery no está listo aún"
                     """
@@ -202,6 +212,7 @@ pipeline {
                         if (params.DEPLOY_SERVICES == 'ALL' || params.DEPLOY_SERVICES == service) {
                             echo "📦 Desplegando ${service}..."
                             sh """
+                                . /root/google-cloud-sdk/path.bash.inc
                                 kubectl apply -f k8s/microservices/${service}-deployment.yaml -n ${K8S_NAMESPACE}
                             """
                         }
@@ -231,6 +242,7 @@ pipeline {
                         if (params.DEPLOY_SERVICES == 'ALL' || params.DEPLOY_SERVICES == service) {
                             echo "🔍 Verificando ${service}..."
                             sh """
+                                . /root/google-cloud-sdk/path.bash.inc
                                 kubectl rollout status deployment/${service} -n ${K8S_NAMESPACE} --timeout=180s || echo "⚠️ ${service} no está listo"
                             """
                         }
@@ -238,6 +250,7 @@ pipeline {
                     
                     // Mostrar estado final
                     sh """
+                        . /root/google-cloud-sdk/path.bash.inc
                         echo ""
                         echo "📊 ===== ESTADO DEL CLUSTER ====="
                         echo "Estado de los pods:"
@@ -281,6 +294,7 @@ pipeline {
                             
                             // Verificar que el pod esté corriendo
                             sh """
+                                . /root/google-cloud-sdk/path.bash.inc
                                 echo "Verificando estado del pod de ${service}..."
                                 kubectl get pods -n ${K8S_NAMESPACE} -l app=${service}
                                 
@@ -297,12 +311,14 @@ pipeline {
                             
                             // Verificar logs del servicio
                             sh """
+                                . /root/google-cloud-sdk/path.bash.inc
                                 echo "\n📋 Últimos logs de ${service}:"
                                 kubectl logs -n ${K8S_NAMESPACE} -l app=${service} --tail=20 || echo "No se pudieron obtener logs"
                             """
                             
                             // Verificar conectividad del servicio
                             sh """
+                                . /root/google-cloud-sdk/path.bash.inc
                                 echo "\n🔌 Verificando servicio de ${service}..."
                                 kubectl get svc -n ${K8S_NAMESPACE} ${service} || echo "Servicio no encontrado"
                             """
@@ -311,6 +327,7 @@ pipeline {
                     
                     // Resumen final
                     sh """
+                        . /root/google-cloud-sdk/path.bash.inc
                         echo "\n📊 ===== RESUMEN DE PRUEBAS DE INTEGRACIÓN ====="
                         echo "Namespace: ${K8S_NAMESPACE}"
                         echo "\nEstado de todos los pods:"
