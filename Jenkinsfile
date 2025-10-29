@@ -11,6 +11,8 @@ pipeline {
         GCP_ZONE = 'us-central1-a'
         GCP_REGISTRY = "${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/ecommerce-registry"
         GKE_CLUSTER = 'ecommerce-staging-cluster'
+        // GKE Auth Plugin
+        USE_GKE_GCLOUD_AUTH_PLUGIN = 'True'
         // Docker
         DOCKER_REGISTRY = 'docker.io'
         DOCKER_CREDENTIALS_ID = 'dockerhub'
@@ -49,46 +51,58 @@ pipeline {
         stage('Determine Environment') {
             steps {
                 script {
-                    def branch = env.GIT_BRANCH ?: 'dev'
+                    // Obtener branch de diferentes fuentes posibles
+                    def branch = env.GIT_BRANCH ?: env.BRANCH_NAME ?: 'dev'
                     branch = branch.replaceAll('origin/', '')
                     
                     echo "🌿 Branch detectada: ${branch}"
+                    echo "🔍 GIT_BRANCH: ${env.GIT_BRANCH}"
+                    echo "🔍 BRANCH_NAME: ${env.BRANCH_NAME}"
                     
+                    // Usar variables globales en lugar de env para asegurar persistencia
                     if (branch == 'master' || branch == 'main') {
-                        env.TARGET_ENV = 'production'
-                        env.K8S_NAMESPACE = 'ecommerce-prod'
-                        env.SHOULD_DEPLOY = 'true'
-                        env.RUN_INTEGRATION_TESTS = 'false'
-                        env.USE_GCP = 'true'
+                        TARGET_ENV = 'production'
+                        K8S_NAMESPACE = 'ecommerce-prod'
+                        SHOULD_DEPLOY = 'true'
+                        RUN_INTEGRATION_TESTS = 'false'
+                        USE_GCP = 'true'
                         echo "🚀 Ambiente: PRODUCTION (GCP)"
                     } else if (branch == 'staging' || branch == 'stage') {
-                        env.TARGET_ENV = 'staging'
-                        env.K8S_NAMESPACE = 'ecommerce-staging'
-                        env.SHOULD_DEPLOY = 'true'
-                        env.RUN_INTEGRATION_TESTS = 'true'
-                        env.USE_GCP = 'true'
+                        TARGET_ENV = 'staging'
+                        K8S_NAMESPACE = 'ecommerce-staging'
+                        SHOULD_DEPLOY = 'true'
+                        RUN_INTEGRATION_TESTS = 'true'
+                        USE_GCP = 'true'
                         echo "🧪 Ambiente: STAGING (GCP con pruebas de integración)"
                     } else if (branch == 'dev' || branch == 'develop') {
-                        env.TARGET_ENV = 'development'
-                        env.K8S_NAMESPACE = 'ecommerce-dev'
-                        env.SHOULD_DEPLOY = 'false'
-                        env.RUN_INTEGRATION_TESTS = 'false'
-                        env.USE_GCP = 'false'
+                        TARGET_ENV = 'development'
+                        K8S_NAMESPACE = 'ecommerce-dev'
+                        SHOULD_DEPLOY = 'false'
+                        RUN_INTEGRATION_TESTS = 'false'
+                        USE_GCP = 'false'
                         echo "💻 Ambiente: DEVELOPMENT (solo build y tests)"
                     } else {
-                        env.TARGET_ENV = 'feature'
-                        env.K8S_NAMESPACE = 'ecommerce-dev'
-                        env.SHOULD_DEPLOY = 'false'
-                        env.RUN_INTEGRATION_TESTS = 'false'
-                        env.USE_GCP = 'false'
+                        TARGET_ENV = 'feature'
+                        K8S_NAMESPACE = 'ecommerce-dev'
+                        SHOULD_DEPLOY = 'false'
+                        RUN_INTEGRATION_TESTS = 'false'
+                        USE_GCP = 'false'
                         echo "🔧 Ambiente: FEATURE (solo build y tests)"
                     }
                     
+                    // También establecer en env para compatibilidad
+                    env.TARGET_ENV = TARGET_ENV
+                    env.K8S_NAMESPACE = K8S_NAMESPACE
+                    env.SHOULD_DEPLOY = SHOULD_DEPLOY
+                    env.RUN_INTEGRATION_TESTS = RUN_INTEGRATION_TESTS
+                    env.USE_GCP = USE_GCP
+                    
                     echo "📋 Configuración:"
-                    echo "   - Ambiente: ${env.TARGET_ENV}"
-                    echo "   - Namespace: ${env.K8S_NAMESPACE}"
-                    echo "   - Deploy: ${env.SHOULD_DEPLOY}"
-                    echo "   - Integration Tests: ${env.RUN_INTEGRATION_TESTS}"
+                    echo "   - Ambiente: ${TARGET_ENV}"
+                    echo "   - Namespace: ${K8S_NAMESPACE}"
+                    echo "   - Deploy: ${SHOULD_DEPLOY}"
+                    echo "   - Integration Tests: ${RUN_INTEGRATION_TESTS}"
+                    echo "   - Use GCP: ${USE_GCP}"
                 }
             }
         }
@@ -127,6 +141,26 @@ pipeline {
                             echo "Docker CLI ya está instalado"
                         fi
                         
+                        # Instalar kubectl si no está instalado
+                        if ! command -v kubectl &> /dev/null; then
+                            echo "Instalando kubectl..."
+                            curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+                            chmod +x kubectl
+                            mv kubectl /usr/local/bin/
+                        else
+                            echo "kubectl ya está instalado"
+                        fi
+                        
+                        # Instalar gcloud CLI si no está instalado (necesario para GCP)
+                        if ! command -v gcloud &> /dev/null; then
+                            echo "Instalando Google Cloud CLI..."
+                            echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main" | tee -a /etc/apt/sources.list.d/google-cloud-sdk.list
+                            curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key add -
+                            apt-get update && apt-get install -y google-cloud-cli google-cloud-cli-gke-gcloud-auth-plugin
+                        else
+                            echo "gcloud CLI ya está instalado"
+                        fi
+                        
                         # Configurar Java 17 como default
                         export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
                         export PATH=$JAVA_HOME/bin:$PATH
@@ -137,6 +171,10 @@ pipeline {
                         mvn --version
                         echo "✅ Docker version:"
                         docker --version
+                        echo "✅ kubectl version:"
+                        kubectl version --client
+                        echo "✅ gcloud version:"
+                        gcloud version
                     '''
                 }
             }
@@ -204,7 +242,10 @@ pipeline {
         
         stage('Authenticate with GCP') {
             when {
-                expression { env.USE_GCP == 'true' && env.SHOULD_DEPLOY == 'true' }
+                expression { 
+                    return (env.USE_GCP == 'true' || USE_GCP == 'true') && 
+                           (env.SHOULD_DEPLOY == 'true' || SHOULD_DEPLOY == 'true')
+                }
             }
             steps {
                 script {
@@ -235,12 +276,13 @@ pipeline {
                         'shipping-service'
                     ]
                     
-                    def registry = (env.USE_GCP == 'true') ? GCP_REGISTRY : ''
+                    def useGcp = (env.USE_GCP == 'true' || USE_GCP == 'true')
+                    def registry = useGcp ? GCP_REGISTRY : ''
                     
                     services.each { service ->
                         if (params.DEPLOY_SERVICES == 'ALL' || params.DEPLOY_SERVICES == service) {
                             echo "Building Docker image for ${service}..."
-                            if (env.USE_GCP == 'true') {
+                            if (useGcp) {
                                 sh """
                                     docker build -t ${registry}/ecommerce-${service}:${BUILD_TAG} -f ${service}/Dockerfile .
                                     docker tag ${registry}/ecommerce-${service}:${BUILD_TAG} ${registry}/ecommerce-${service}:latest
@@ -259,7 +301,9 @@ pipeline {
         
         stage('Push Docker Images') {
             when {
-                expression { env.SHOULD_DEPLOY == 'true' }
+                expression { 
+                    return env.SHOULD_DEPLOY == 'true' || SHOULD_DEPLOY == 'true'
+                }
             }
             steps {
                 script {
@@ -272,7 +316,8 @@ pipeline {
                         'shipping-service'
                     ]
                     
-                    if (env.USE_GCP == 'true') {
+                    def useGcp = (env.USE_GCP == 'true' || USE_GCP == 'true')
+                    if (useGcp) {
                         echo "📤 Subiendo imágenes a GCP Artifact Registry..."
                         services.each { service ->
                             if (params.DEPLOY_SERVICES == 'ALL' || params.DEPLOY_SERVICES == service) {
@@ -303,7 +348,10 @@ pipeline {
         
         stage('Deploy to Kubernetes') {
             when {
-                expression { params.DEPLOY_TO_K8S == true && env.SHOULD_DEPLOY == 'true' }
+                expression { 
+                    return params.DEPLOY_TO_K8S == true && 
+                           (env.SHOULD_DEPLOY == 'true' || SHOULD_DEPLOY == 'true')
+                }
             }
             steps {
                 script {
@@ -353,7 +401,10 @@ pipeline {
         
         stage('Verify Deployment') {
             when {
-                expression { params.DEPLOY_TO_K8S == true && env.SHOULD_DEPLOY == 'true' }
+                expression { 
+                    return params.DEPLOY_TO_K8S == true && 
+                           (env.SHOULD_DEPLOY == 'true' || SHOULD_DEPLOY == 'true')
+                }
             }
             steps {
                 script {
@@ -390,7 +441,10 @@ pipeline {
         
         stage('Smoke Tests') {
             when {
-                expression { params.DEPLOY_TO_K8S == true && env.SHOULD_DEPLOY == 'true' }
+                expression { 
+                    return params.DEPLOY_TO_K8S == true && 
+                           (env.SHOULD_DEPLOY == 'true' || SHOULD_DEPLOY == 'true')
+                }
             }
             steps {
                 script {
@@ -420,7 +474,10 @@ pipeline {
         
         stage('Integration Tests - Staging') {
             when {
-                expression { env.RUN_INTEGRATION_TESTS == 'true' && params.DEPLOY_TO_K8S == true }
+                expression { 
+                    return (env.RUN_INTEGRATION_TESTS == 'true' || RUN_INTEGRATION_TESTS == 'true') && 
+                           params.DEPLOY_TO_K8S == true
+                }
             }
             steps {
                 script {
