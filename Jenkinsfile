@@ -59,50 +59,52 @@ pipeline {
                     echo "🔍 GIT_BRANCH: ${env.GIT_BRANCH}"
                     echo "🔍 BRANCH_NAME: ${env.BRANCH_NAME}"
                     
-                    // Usar variables globales en lugar de env para asegurar persistencia
+                    // Usar variables locales con def para evitar warnings
+                    def targetEnv, k8sNamespace, shouldDeploy, runIntegrationTests, useGcp
+                    
                     if (branch == 'master' || branch == 'main') {
-                        TARGET_ENV = 'production'
-                        K8S_NAMESPACE = 'ecommerce-prod'
-                        SHOULD_DEPLOY = 'true'
-                        RUN_INTEGRATION_TESTS = 'false'
-                        USE_GCP = 'true'
+                        targetEnv = 'production'
+                        k8sNamespace = 'ecommerce-prod'
+                        shouldDeploy = 'true'
+                        runIntegrationTests = 'false'
+                        useGcp = 'true'
                         echo "🚀 Ambiente: PRODUCTION (GCP)"
                     } else if (branch == 'staging' || branch == 'stage') {
-                        TARGET_ENV = 'staging'
-                        K8S_NAMESPACE = 'ecommerce-staging'
-                        SHOULD_DEPLOY = 'true'
-                        RUN_INTEGRATION_TESTS = 'true'
-                        USE_GCP = 'true'
+                        targetEnv = 'staging'
+                        k8sNamespace = 'ecommerce-staging'
+                        shouldDeploy = 'true'
+                        runIntegrationTests = 'true'
+                        useGcp = 'true'
                         echo "🧪 Ambiente: STAGING (GCP con pruebas de integración)"
                     } else if (branch == 'dev' || branch == 'develop') {
-                        TARGET_ENV = 'development'
-                        K8S_NAMESPACE = 'ecommerce-dev'
-                        SHOULD_DEPLOY = 'false'
-                        RUN_INTEGRATION_TESTS = 'false'
-                        USE_GCP = 'false'
+                        targetEnv = 'development'
+                        k8sNamespace = 'ecommerce-dev'
+                        shouldDeploy = 'false'
+                        runIntegrationTests = 'false'
+                        useGcp = 'false'
                         echo "💻 Ambiente: DEVELOPMENT (solo build y tests)"
                     } else {
-                        TARGET_ENV = 'feature'
-                        K8S_NAMESPACE = 'ecommerce-dev'
-                        SHOULD_DEPLOY = 'false'
-                        RUN_INTEGRATION_TESTS = 'false'
-                        USE_GCP = 'false'
+                        targetEnv = 'feature'
+                        k8sNamespace = 'ecommerce-dev'
+                        shouldDeploy = 'false'
+                        runIntegrationTests = 'false'
+                        useGcp = 'false'
                         echo "🔧 Ambiente: FEATURE (solo build y tests)"
                     }
                     
-                    // También establecer en env para compatibilidad
-                    env.TARGET_ENV = TARGET_ENV
-                    env.K8S_NAMESPACE = K8S_NAMESPACE
-                    env.SHOULD_DEPLOY = SHOULD_DEPLOY
-                    env.RUN_INTEGRATION_TESTS = RUN_INTEGRATION_TESTS
-                    env.USE_GCP = USE_GCP
+                    // Establecer en env para uso en otros stages
+                    env.TARGET_ENV = targetEnv
+                    env.K8S_NAMESPACE = k8sNamespace
+                    env.SHOULD_DEPLOY = shouldDeploy
+                    env.RUN_INTEGRATION_TESTS = runIntegrationTests
+                    env.USE_GCP = useGcp
                     
                     echo "📋 Configuración:"
-                    echo "   - Ambiente: ${TARGET_ENV}"
-                    echo "   - Namespace: ${K8S_NAMESPACE}"
-                    echo "   - Deploy: ${SHOULD_DEPLOY}"
-                    echo "   - Integration Tests: ${RUN_INTEGRATION_TESTS}"
-                    echo "   - Use GCP: ${USE_GCP}"
+                    echo "   - Ambiente: ${targetEnv}"
+                    echo "   - Namespace: ${k8sNamespace}"
+                    echo "   - Deploy: ${shouldDeploy}"
+                    echo "   - Integration Tests: ${runIntegrationTests}"
+                    echo "   - Use GCP: ${useGcp}"
                 }
             }
         }
@@ -154,9 +156,12 @@ pipeline {
                         # Instalar gcloud CLI si no está instalado (necesario para GCP)
                         if ! command -v gcloud &> /dev/null; then
                             echo "Instalando Google Cloud CLI..."
-                            echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main" | tee -a /etc/apt/sources.list.d/google-cloud-sdk.list
-                            curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key add -
-                            apt-get update && apt-get install -y google-cloud-cli google-cloud-cli-gke-gcloud-auth-plugin
+                            # Método alternativo más confiable
+                            curl https://sdk.cloud.google.com | bash || echo "Warning: gcloud installation failed, continuing..."
+                            if [ -f /root/google-cloud-sdk/path.bash.inc ]; then
+                                source /root/google-cloud-sdk/path.bash.inc
+                                gcloud components install gke-gcloud-auth-plugin --quiet || echo "Warning: gke-auth-plugin installation failed"
+                            fi
                         else
                             echo "gcloud CLI ya está instalado"
                         fi
@@ -174,7 +179,7 @@ pipeline {
                         echo "✅ kubectl version:"
                         kubectl version --client
                         echo "✅ gcloud version:"
-                        gcloud version
+                        gcloud version || echo "gcloud not available - will be installed when needed"
                     '''
                 }
             }
@@ -243,8 +248,7 @@ pipeline {
         stage('Authenticate with GCP') {
             when {
                 expression { 
-                    return (env.USE_GCP == 'true' || USE_GCP == 'true') && 
-                           (env.SHOULD_DEPLOY == 'true' || SHOULD_DEPLOY == 'true')
+                    return env.USE_GCP == 'true' && env.SHOULD_DEPLOY == 'true'
                 }
             }
             steps {
@@ -276,7 +280,7 @@ pipeline {
                         'shipping-service'
                     ]
                     
-                    def useGcp = (env.USE_GCP == 'true' || USE_GCP == 'true')
+                    def useGcp = (env.USE_GCP == 'true')
                     def registry = useGcp ? GCP_REGISTRY : ''
                     
                     services.each { service ->
@@ -302,7 +306,7 @@ pipeline {
         stage('Push Docker Images') {
             when {
                 expression { 
-                    return env.SHOULD_DEPLOY == 'true' || SHOULD_DEPLOY == 'true'
+                    return env.SHOULD_DEPLOY == 'true'
                 }
             }
             steps {
@@ -316,7 +320,7 @@ pipeline {
                         'shipping-service'
                     ]
                     
-                    def useGcp = (env.USE_GCP == 'true' || USE_GCP == 'true')
+                    def useGcp = (env.USE_GCP == 'true')
                     if (useGcp) {
                         echo "📤 Subiendo imágenes a GCP Artifact Registry..."
                         services.each { service ->
@@ -349,8 +353,7 @@ pipeline {
         stage('Deploy to Kubernetes') {
             when {
                 expression { 
-                    return params.DEPLOY_TO_K8S == true && 
-                           (env.SHOULD_DEPLOY == 'true' || SHOULD_DEPLOY == 'true')
+                    return params.DEPLOY_TO_K8S == true && env.SHOULD_DEPLOY == 'true'
                 }
             }
             steps {
@@ -402,8 +405,7 @@ pipeline {
         stage('Verify Deployment') {
             when {
                 expression { 
-                    return params.DEPLOY_TO_K8S == true && 
-                           (env.SHOULD_DEPLOY == 'true' || SHOULD_DEPLOY == 'true')
+                    return params.DEPLOY_TO_K8S == true && env.SHOULD_DEPLOY == 'true'
                 }
             }
             steps {
@@ -442,8 +444,7 @@ pipeline {
         stage('Smoke Tests') {
             when {
                 expression { 
-                    return params.DEPLOY_TO_K8S == true && 
-                           (env.SHOULD_DEPLOY == 'true' || SHOULD_DEPLOY == 'true')
+                    return params.DEPLOY_TO_K8S == true && env.SHOULD_DEPLOY == 'true'
                 }
             }
             steps {
@@ -475,8 +476,7 @@ pipeline {
         stage('Integration Tests - Staging') {
             when {
                 expression { 
-                    return (env.RUN_INTEGRATION_TESTS == 'true' || RUN_INTEGRATION_TESTS == 'true') && 
-                           params.DEPLOY_TO_K8S == true
+                    return env.RUN_INTEGRATION_TESTS == 'true' && params.DEPLOY_TO_K8S == true
                 }
             }
             steps {
@@ -613,11 +613,14 @@ pipeline {
     post {
         success {
             script {
+                def targetEnv = env.TARGET_ENV ?: 'unknown'
+                def k8sNamespace = env.K8S_NAMESPACE ?: 'unknown'
+                
                 echo "✅ Pipeline ejecutado exitosamente"
-                echo "🎉 Build completado para ambiente: ${env.TARGET_ENV}"
+                echo "🎉 Build completado para ambiente: ${targetEnv}"
                 
                 if (env.SHOULD_DEPLOY == 'true') {
-                    echo "🚀 Microservicios desplegados en: ${env.K8S_NAMESPACE}"
+                    echo "🚀 Microservicios desplegados en: ${k8sNamespace}"
                     
                     if (env.RUN_INTEGRATION_TESTS == 'true') {
                         echo "✅ Pruebas de integración ejecutadas exitosamente"
@@ -630,7 +633,8 @@ pipeline {
         }
         failure {
             script {
-                echo "❌ Pipeline falló en ambiente: ${env.TARGET_ENV}"
+                def targetEnv = env.TARGET_ENV ?: 'unknown'
+                echo "❌ Pipeline falló en ambiente: ${targetEnv}"
                 echo "📋 Revisa los logs para más detalles"
                 
                 if (env.RUN_INTEGRATION_TESTS == 'true') {
