@@ -72,7 +72,7 @@ pipeline {
                 script {
                     echo "🐳 Construyendo imagen Docker de ${SERVICE_NAME}..."
                     sh """
-                        docker build -t ${SERVICE_NAME}:${BUILD_TAG} -f Dockerfile ..
+                        docker build -t ${SERVICE_NAME}:${BUILD_TAG} -f Dockerfile .
                         docker tag ${SERVICE_NAME}:${BUILD_TAG} ${SERVICE_NAME}:latest
                     """
                 }
