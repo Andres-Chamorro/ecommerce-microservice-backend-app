@@ -103,9 +103,22 @@ pipeline {
                 script {
                     echo "🔧 Instalando herramientas de build..."
                     sh '''
-                        # Instalar Java 17 y Maven
+                        # Instalar Java 17, Maven y Docker CLI
                         apt-get update
-                        apt-get install -y openjdk-17-jdk maven
+                        apt-get install -y openjdk-17-jdk maven ca-certificates curl gnupg
+                        
+                        # Instalar Docker CLI
+                        install -m 0755 -d /etc/apt/keyrings
+                        curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+                        chmod a+r /etc/apt/keyrings/docker.gpg
+                        
+                        echo \
+                          "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian \
+                          $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
+                          tee /etc/apt/sources.list.d/docker.list > /dev/null
+                        
+                        apt-get update
+                        apt-get install -y docker-ce-cli
                         
                         # Configurar Java 17 como default
                         export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
@@ -115,6 +128,8 @@ pipeline {
                         java -version
                         echo "Maven version:"
                         mvn --version
+                        echo "Docker version:"
+                        docker --version
                     '''
                 }
             }
