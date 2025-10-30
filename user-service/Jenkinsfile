@@ -8,7 +8,7 @@ pipeline {
         
         // Service Configuration
         SERVICE_NAME = 'user-service'
-        SERVICE_PORT = '8700'
+        SERVICE_PORT = '8300'
         
         // Build Configuration
         MAVEN_OPTS = '-Xmx2048m'
@@ -25,7 +25,7 @@ pipeline {
         booleanParam(
             name: 'SKIP_TESTS',
             defaultValue: false,
-            description: 'Saltar pruebas unitarias e integraciÃ³n'
+            description: 'Saltar pruebas unitarias e integraciÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â³n'
         )
         booleanParam(
             name: 'SKIP_DEPLOY',
@@ -37,7 +37,7 @@ pipeline {
     stages {
         stage('Checkout') {
             steps {
-                echo "ðŸ“„ [DEV] Clonando repositorio de ${SERVICE_NAME}..."
+                echo "ÃƒÆ’Ã‚Â°Ãƒâ€¦Ã‚Â¸ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾ [DEV] Clonando repositorio de ${SERVICE_NAME}..."
                 checkout scm
             }
         }
@@ -45,7 +45,7 @@ pipeline {
         stage('Build Maven') {
             steps {
                 script {
-                    echo "ðŸ”¨ [DEV] Compilando ${SERVICE_NAME} con Maven..."
+                    echo "ÃƒÆ’Ã‚Â°Ãƒâ€¦Ã‚Â¸ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒâ€šÃ‚Â¨ [DEV] Compilando ${SERVICE_NAME} con Maven..."
                     dir('user-service') {
                         sh 'mvn clean package -DskipTests'
                     }
@@ -59,7 +59,7 @@ pipeline {
             }
             steps {
                 script {
-                    echo "ðŸ§ª [DEV] Ejecutando pruebas unitarias de ${SERVICE_NAME}..."
+                    echo "ÃƒÆ’Ã‚Â°Ãƒâ€¦Ã‚Â¸Ãƒâ€šÃ‚Â§Ãƒâ€šÃ‚Âª [DEV] Ejecutando pruebas unitarias de ${SERVICE_NAME}..."
                     dir('user-service') {
                         sh 'mvn test -Dtest=*ServiceTest,*ResourceTest'
                     }
@@ -81,24 +81,13 @@ pipeline {
                         docker build -t ${IMAGE_NAME}:dev-${BUILD_TAG} -f user-service/Dockerfile .
                         docker tag ${IMAGE_NAME}:dev-${BUILD_TAG} ${IMAGE_NAME}:dev-latest
                         
-                        # Guardar imagen a archivo tar
-                        docker save ${IMAGE_NAME}:dev-${BUILD_TAG} -o /tmp/${IMAGE_NAME}-dev-${BUILD_TAG}.tar
+                        # Cargar imagen en Minikube usando docker save | docker load
+                        echo "Cargando imagen en Minikube..."
+                        docker save ${IMAGE_NAME}:dev-${BUILD_TAG} ${IMAGE_NAME}:dev-latest | docker exec -i minikube docker load
                         
-                        # Cargar imagen en Minikube
-                        docker cp /tmp/${IMAGE_NAME}-dev-${BUILD_TAG}.tar minikube:/tmp/${IMAGE_NAME}-dev-${BUILD_TAG}.tar
-                        
-                        # Verificar que el archivo existe en Minikube
-                        docker exec minikube ls -lh /tmp/${IMAGE_NAME}-dev-${BUILD_TAG}.tar
-                        
-                        # Importar imagen
-                        docker exec minikube ctr -n k8s.io images import /tmp/${IMAGE_NAME}-dev-${BUILD_TAG}.tar
-                        
-                        # Limpiar archivos temporales
-                        rm -f /tmp/${IMAGE_NAME}-dev-${BUILD_TAG}.tar
-                        docker exec minikube rm -f /tmp/${IMAGE_NAME}-dev-${BUILD_TAG}.tar
-                        
-                        # Verificar que la imagen existe en Minikube
-                        docker exec minikube crictl images | grep ${IMAGE_NAME} || echo "WARNING: Imagen no encontrada en Minikube"
+                        # Verificar que la imagen se cargó
+                        echo "Verificando imagen en Minikube:"
+                        docker exec minikube docker images | grep ${IMAGE_NAME}
                     """
                 }
             }
@@ -110,7 +99,7 @@ pipeline {
             }
             steps {
                 script {
-                    echo "â˜¸ï¸ [DEV] Desplegando ${SERVICE_NAME} en Minikube..."
+                    echo "ÃƒÆ’Ã‚Â¢Ãƒâ€¹Ã…â€œÃƒâ€šÃ‚Â¸ÃƒÆ’Ã‚Â¯Ãƒâ€šÃ‚Â¸Ãƒâ€šÃ‚Â [DEV] Desplegando ${SERVICE_NAME} en Minikube..."
                     
                     sh """
                         # Configurar KUBECONFIG explÃ­citamente
@@ -119,7 +108,7 @@ pipeline {
                         # Cambiar contexto a Minikube
                         kubectl config use-context minikube
                         
-                        # Verificar conexiÃ³n
+                        # Verificar conexiÃƒÂ³n
                         kubectl cluster-info
                         
                         # Crear namespace si no existe
@@ -147,7 +136,7 @@ spec:
         image: ${IMAGE_NAME}:dev-${BUILD_TAG}
         ports:
         - containerPort: ${SERVICE_PORT}
-        imagePullPolicy: Never
+        imagePullPolicy: IfNotPresent
         env:
         - name: SPRING_PROFILES_ACTIVE
           value: "dev"
@@ -166,8 +155,8 @@ spec:
   type: ClusterIP
 EOF
                         
-                        # Esperar a que el deployment estÃ© listo
-                        kubectl rollout status deployment/${SERVICE_NAME} -n ${K8S_NAMESPACE} --timeout=180s || echo "âš ï¸ ${SERVICE_NAME} no estÃ¡ listo"
+                        # Esperar a que el deployment estÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â© listo
+                        kubectl rollout status deployment/${SERVICE_NAME} -n ${K8S_NAMESPACE} --timeout=180s || echo "ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã‚Â¡Ãƒâ€šÃ‚Â ÃƒÆ’Ã‚Â¯Ãƒâ€šÃ‚Â¸Ãƒâ€šÃ‚Â ${SERVICE_NAME} no estÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡ listo"
                     """
                 }
             }
@@ -179,25 +168,22 @@ EOF
             }
             steps {
                 script {
-                    echo "âœ… [DEV] Verificando despliegue de ${SERVICE_NAME}..."
+                    echo "ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã¢â‚¬Å“ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ [DEV] Verificando despliegue de ${SERVICE_NAME}..."
                     
                     sh """
-                        export KUBECONFIG=/var/jenkins_home/.kube/config
-                        kubectl config use-context minikube
-                        
-                        echo "ðŸ“Š Estado de pods:"
+                        echo "ÃƒÆ’Ã‚Â°Ãƒâ€¦Ã‚Â¸ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒâ€¦Ã‚Â  Estado de pods:"
                         kubectl get pods -n ${K8S_NAMESPACE} -l app=${SERVICE_NAME}
                         
-                        echo "ðŸ“Š Estado de servicios:"
+                        echo "ÃƒÆ’Ã‚Â°Ãƒâ€¦Ã‚Â¸ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒâ€¦Ã‚Â  Estado de servicios:"
                         kubectl get svc -n ${K8S_NAMESPACE} ${SERVICE_NAME}
                         
                         POD_STATUS=\$(kubectl get pods -n ${K8S_NAMESPACE} -l app=${SERVICE_NAME} -o jsonpath='{.items[0].status.phase}' 2>/dev/null || echo 'NotFound')
                         echo "Estado del pod: \$POD_STATUS"
                         
                         if [ "\$POD_STATUS" = "Running" ]; then
-                            echo "âœ… ${SERVICE_NAME} estÃ¡ corriendo correctamente en Minikube"
+                            echo "ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã¢â‚¬Å“ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ ${SERVICE_NAME} estÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡ corriendo correctamente en Minikube"
                         else
-                            echo "âš ï¸ WARNING: ${SERVICE_NAME} no estÃ¡ en estado Running"
+                            echo "ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã‚Â¡Ãƒâ€šÃ‚Â ÃƒÆ’Ã‚Â¯Ãƒâ€šÃ‚Â¸Ãƒâ€šÃ‚Â WARNING: ${SERVICE_NAME} no estÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡ en estado Running"
                             exit 1
                         fi
                     """
@@ -211,18 +197,18 @@ EOF
             }
             steps {
                 script {
-                    echo "ðŸ”— [DEV] Ejecutando pruebas de integraciÃ³n..."
+                    echo "ÃƒÆ’Ã‚Â°Ãƒâ€¦Ã‚Â¸ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â [DEV] Ejecutando pruebas de integraciÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â³n..."
                     dir('tests/integration') {
                         sh '''
                             if [ -f pom.xml ]; then
                                 # Configurar URLs de servicios en Minikube
                                 export USER_SERVICE_URL="http://user-service.ecommerce-dev:8700"
-                                export ORDER_SERVICE_URL="http://order-service.ecommerce-dev:8300"
+                                export ORDER_SERVICE_URL="http://user-service.ecommerce-dev:8300"
                                 export PRODUCT_SERVICE_URL="http://product-service.ecommerce-dev:8500"
                                 
-                                mvn test -Dtest=*IntegrationTest || echo "âš ï¸ Algunas pruebas de integraciÃ³n fallaron"
+                                mvn test -Dtest=*IntegrationTest || echo "ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã‚Â¡Ãƒâ€šÃ‚Â ÃƒÆ’Ã‚Â¯Ãƒâ€šÃ‚Â¸Ãƒâ€šÃ‚Â Algunas pruebas de integraciÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â³n fallaron"
                             else
-                                echo "â„¹ï¸ No hay pruebas de integraciÃ³n configuradas"
+                                echo "ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¹ÃƒÆ’Ã‚Â¯Ãƒâ€šÃ‚Â¸Ãƒâ€šÃ‚Â No hay pruebas de integraciÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â³n configuradas"
                             fi
                         '''
                     }
@@ -233,22 +219,22 @@ EOF
     
     post {
         always {
-            echo "ðŸ§¹ [DEV] Limpiando workspace..."
+            echo "ÃƒÆ’Ã‚Â°Ãƒâ€¦Ã‚Â¸Ãƒâ€šÃ‚Â§Ãƒâ€šÃ‚Â¹ [DEV] Limpiando workspace..."
             cleanWs()
         }
         success {
             echo """
-            âœ… ========================================
-            âœ… Pipeline DEV de ${SERVICE_NAME} completado
-            âœ… ========================================
-            ðŸ“¦ Imagen: ${IMAGE_NAME}:dev-${BUILD_TAG}
-            â˜¸ï¸  Namespace: ${K8S_NAMESPACE}
-            ðŸŽ¯ Ambiente: Minikube (Local)
-            âœ… ========================================
+            ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã¢â‚¬Å“ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ ========================================
+            ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã¢â‚¬Å“ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ Pipeline DEV de ${SERVICE_NAME} completado
+            ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã¢â‚¬Å“ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ ========================================
+            ÃƒÆ’Ã‚Â°Ãƒâ€¦Ã‚Â¸ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒâ€šÃ‚Â¦ Imagen: ${IMAGE_NAME}:dev-${BUILD_TAG}
+            ÃƒÆ’Ã‚Â¢Ãƒâ€¹Ã…â€œÃƒâ€šÃ‚Â¸ÃƒÆ’Ã‚Â¯Ãƒâ€šÃ‚Â¸Ãƒâ€šÃ‚Â  Namespace: ${K8S_NAMESPACE}
+            ÃƒÆ’Ã‚Â°Ãƒâ€¦Ã‚Â¸Ãƒâ€¦Ã‚Â½Ãƒâ€šÃ‚Â¯ Ambiente: Minikube (Local)
+            ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã¢â‚¬Å“ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ ========================================
             """
         }
         failure {
-            echo "âŒ Pipeline DEV de ${SERVICE_NAME} fallÃ³"
+            echo "ÃƒÆ’Ã‚Â¢Ãƒâ€šÃ‚ÂÃƒâ€¦Ã¢â‚¬â„¢ Pipeline DEV de ${SERVICE_NAME} fallÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â³"
         }
     }
 }
