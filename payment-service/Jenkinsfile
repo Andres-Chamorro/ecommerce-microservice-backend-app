@@ -1,4 +1,4 @@
-pipeline {
+﻿pipeline {
     agent any
     
     environment {
@@ -77,11 +77,23 @@ pipeline {
                 script {
                     echo "ÃƒÆ’Ã‚Â°Ãƒâ€¦Ã‚Â¸Ãƒâ€šÃ‚ÂÃƒâ€šÃ‚Â³ [DEV] Construyendo imagen Docker de ${SERVICE_NAME}..."
                     sh """
-                        # Usar el Docker daemon de Minikube
-                        eval \$(minikube docker-env) || true
-                        
+                        # Construir imagen con Docker
                         docker build -t ${IMAGE_NAME}:dev-${BUILD_TAG} -f payment-service/Dockerfile .
                         docker tag ${IMAGE_NAME}:dev-${BUILD_TAG} ${IMAGE_NAME}:dev-latest
+                        
+                        # Guardar imagen a archivo tar
+                        docker save ${IMAGE_NAME}:dev-${BUILD_TAG} -o /tmp/${IMAGE_NAME}-dev-${BUILD_TAG}.tar
+                        
+                        # Cargar imagen en Minikube
+                        docker cp /tmp/${IMAGE_NAME}-dev-${BUILD_TAG}.tar minikube:/tmp/
+                        docker exec minikube ctr -n k8s.io images import /tmp/${IMAGE_NAME}-dev-${BUILD_TAG}.tar
+                        
+                        # Limpiar archivos temporales
+                        rm -f /tmp/${IMAGE_NAME}-dev-${BUILD_TAG}.tar
+                        docker exec minikube rm -f /tmp/${IMAGE_NAME}-dev-${BUILD_TAG}.tar
+                        
+                        # Verificar que la imagen existe en Minikube
+                        docker exec minikube crictl images | grep ${IMAGE_NAME} || echo "WARNING: Imagen no encontrada en Minikube"
                     """
                 }
             }
@@ -130,7 +142,7 @@ spec:
         image: ${IMAGE_NAME}:dev-${BUILD_TAG}
         ports:
         - containerPort: ${SERVICE_PORT}
-        imagePullPolicy: IfNotPresent
+        imagePullPolicy: Never
         env:
         - name: SPRING_PROFILES_ACTIVE
           value: "dev"

@@ -75,7 +75,7 @@
         stage('Build Docker Image') {
             steps {
                 script {
-                    echo "ðŸ³ [DEV] Construyendo imagen Docker de ${SERVICE_NAME}..."
+                    echo "ÃƒÆ’Ã‚Â°Ãƒâ€¦Ã‚Â¸Ãƒâ€šÃ‚ÂÃƒâ€šÃ‚Â³ [DEV] Construyendo imagen Docker de ${SERVICE_NAME}..."
                     sh """
                         # Construir imagen con Docker
                         docker build -t ${IMAGE_NAME}:dev-${BUILD_TAG} -f user-service/Dockerfile .
