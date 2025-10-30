@@ -14,9 +14,8 @@ pipeline {
         MAVEN_OPTS = '-Xmx2048m'
         BUILD_TAG = "${env.BUILD_NUMBER}"
         
-        // Docker Registry (ajusta segÃºn tu registry)
-        DOCKER_REGISTRY = 'us-central1-docker.pkg.dev/ecommerce-microservices-476519/ecommerce-registry' // Cambiar si usas Docker Hub o GCR
-        IMAGE_NAME = "${DOCKER_REGISTRY}/${SERVICE_NAME}"
+        // Docker - Local para Minikube
+        IMAGE_NAME = "${SERVICE_NAME}"
         
         // Minikube Configuration
         K8S_NAMESPACE = 'ecommerce-dev'
@@ -38,7 +37,7 @@ pipeline {
     stages {
         stage('Checkout') {
             steps {
-                echo "ðŸ”„ [DEV] Clonando repositorio de ${SERVICE_NAME}..."
+                echo "ðŸ“„ [DEV] Clonando repositorio de ${SERVICE_NAME}..."
                 checkout scm
             }
         }
@@ -73,45 +72,16 @@ pipeline {
             }
         }
         
-        stage('Integration Tests') {
-            when {
-                expression { params.SKIP_TESTS == false }
-            }
-            steps {
-                script {
-                    echo "ðŸ”— [DEV] Ejecutando pruebas de integraciÃ³n..."
-                    dir('tests/integration') {
-                        sh '''
-                            if [ -f pom.xml ]; then
-                                mvn test -Dtest=*IntegrationTest || echo "âš ï¸ Pruebas de integraciÃ³n requieren servicios activos"
-                            else
-                                echo "â„¹ï¸ No hay pruebas de integraciÃ³n configuradas"
-                            fi
-                        '''
-                    }
-                }
-            }
-        }
-        
         stage('Build Docker Image') {
             steps {
                 script {
                     echo "ðŸ³ [DEV] Construyendo imagen Docker de ${SERVICE_NAME}..."
                     sh """
+                        # Usar el Docker daemon de Minikube
+                        eval \$(minikube docker-env) || true
+                        
                         docker build -t ${IMAGE_NAME}:dev-${BUILD_TAG} -f favourite-service/Dockerfile .
                         docker tag ${IMAGE_NAME}:dev-${BUILD_TAG} ${IMAGE_NAME}:dev-latest
-                    """
-                }
-            }
-        }
-        
-        stage('Push to Registry') {
-            steps {
-                script {
-                    echo "ðŸ“¦ [DEV] Subiendo imagen a registry..."
-                    sh """
-                        docker push ${IMAGE_NAME}:dev-${BUILD_TAG}
-                        docker push ${IMAGE_NAME}:dev-latest
                     """
                 }
             }
@@ -151,7 +121,10 @@ spec:
         image: ${IMAGE_NAME}:dev-${BUILD_TAG}
         ports:
         - containerPort: ${SERVICE_PORT}
-        imagePullPolicy: Always
+        imagePullPolicy: IfNotPresent
+        env:
+        - name: SPRING_PROFILES_ACTIVE
+          value: "dev"
 ---
 apiVersion: v1
 kind: Service
@@ -202,6 +175,31 @@ EOF
                 }
             }
         }
+        
+        stage('Integration Tests') {
+            when {
+                expression { params.SKIP_TESTS == false && params.SKIP_DEPLOY == false }
+            }
+            steps {
+                script {
+                    echo "ðŸ”— [DEV] Ejecutando pruebas de integraciÃ³n..."
+                    dir('tests/integration') {
+                        sh '''
+                            if [ -f pom.xml ]; then
+                                # Configurar URLs de servicios en Minikube
+                                export USER_SERVICE_URL="http://user-service.ecommerce-dev:8700"
+                                export ORDER_SERVICE_URL="http://order-service.ecommerce-dev:8300"
+                                export PRODUCT_SERVICE_URL="http://product-service.ecommerce-dev:8500"
+                                
+                                mvn test -Dtest=*IntegrationTest || echo "âš ï¸ Algunas pruebas de integraciÃ³n fallaron"
+                            else
+                                echo "â„¹ï¸ No hay pruebas de integraciÃ³n configuradas"
+                            fi
+                        '''
+                    }
+                }
+            }
+        }
     }
     
     post {
@@ -225,4 +223,3 @@ EOF
         }
     }
 }
-
