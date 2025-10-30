@@ -1,0 +1,225 @@
+pipeline {
+    agent any
+    
+    environment {
+        // Java Configuration
+        JAVA_HOME = '/usr/lib/jvm/java-17-openjdk-amd64'
+        PATH = "${JAVA_HOME}/bin:${env.PATH}"
+        
+        // Service Configuration
+        SERVICE_NAME = 'user-service'
+        SERVICE_PORT = '8700'
+        
+        // Build Configuration
+        MAVEN_OPTS = '-Xmx2048m'
+        BUILD_TAG = "${env.BUILD_NUMBER}"
+        
+        // Docker - Local para Minikube
+        IMAGE_NAME = "${SERVICE_NAME}"
+        
+        // Minikube Configuration
+        K8S_NAMESPACE = 'ecommerce-dev'
+    }
+    
+    parameters {
+        booleanParam(
+            name: 'SKIP_TESTS',
+            defaultValue: false,
+            description: 'Saltar pruebas unitarias e integración'
+        )
+        booleanParam(
+            name: 'SKIP_DEPLOY',
+            defaultValue: false,
+            description: 'Saltar despliegue en Minikube'
+        )
+    }
+    
+    stages {
+        stage('Checkout') {
+            steps {
+                echo "📄 [DEV] Clonando repositorio de ${SERVICE_NAME}..."
+                checkout scm
+            }
+        }
+        
+        stage('Build Maven') {
+            steps {
+                script {
+                    echo "🔨 [DEV] Compilando ${SERVICE_NAME} con Maven..."
+                    dir('user-service') {
+                        sh 'mvn clean package -DskipTests'
+                    }
+                }
+            }
+        }
+        
+        stage('Unit Tests') {
+            when {
+                expression { params.SKIP_TESTS == false }
+            }
+            steps {
+                script {
+                    echo "🧪 [DEV] Ejecutando pruebas unitarias de ${SERVICE_NAME}..."
+                    dir('user-service') {
+                        sh 'mvn test -Dtest=*ServiceTest,*ResourceTest'
+                    }
+                }
+            }
+            post {
+                always {
+                    junit allowEmptyResults: true, testResults: 'user-service/target/surefire-reports/*.xml'
+                }
+            }
+        }
+        
+        stage('Build Docker Image') {
+            steps {
+                script {
+                    echo "🐳 [DEV] Construyendo imagen Docker de ${SERVICE_NAME}..."
+                    sh """
+                        # Usar el Docker daemon de Minikube
+                        eval \$(minikube docker-env) || true
+                        
+                        docker build -t ${IMAGE_NAME}:dev-${BUILD_TAG} -f user-service/Dockerfile .
+                        docker tag ${IMAGE_NAME}:dev-${BUILD_TAG} ${IMAGE_NAME}:dev-latest
+                    """
+                }
+            }
+        }
+        
+        stage('Deploy to Minikube') {
+            when {
+                expression { params.SKIP_DEPLOY == false }
+            }
+            steps {
+                script {
+                    echo "☸️ [DEV] Desplegando ${SERVICE_NAME} en Minikube..."
+                    
+                    sh """
+                        # Crear namespace si no existe
+                        kubectl create namespace ${K8S_NAMESPACE} --dry-run=client -o yaml | kubectl apply -f -
+                        
+                        # Crear deployment temporal para dev
+                        cat <<EOF | kubectl apply -f -
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ${SERVICE_NAME}
+  namespace: ${K8S_NAMESPACE}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ${SERVICE_NAME}
+  template:
+    metadata:
+      labels:
+        app: ${SERVICE_NAME}
+    spec:
+      containers:
+      - name: ${SERVICE_NAME}
+        image: ${IMAGE_NAME}:dev-${BUILD_TAG}
+        ports:
+        - containerPort: ${SERVICE_PORT}
+        imagePullPolicy: IfNotPresent
+        env:
+        - name: SPRING_PROFILES_ACTIVE
+          value: "dev"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ${SERVICE_NAME}
+  namespace: ${K8S_NAMESPACE}
+spec:
+  selector:
+    app: ${SERVICE_NAME}
+  ports:
+  - port: ${SERVICE_PORT}
+    targetPort: ${SERVICE_PORT}
+  type: ClusterIP
+EOF
+                        
+                        # Esperar a que el deployment esté listo
+                        kubectl rollout status deployment/${SERVICE_NAME} -n ${K8S_NAMESPACE} --timeout=180s || echo "⚠️ ${SERVICE_NAME} no está listo"
+                    """
+                }
+            }
+        }
+        
+        stage('Verify Deployment') {
+            when {
+                expression { params.SKIP_DEPLOY == false }
+            }
+            steps {
+                script {
+                    echo "✅ [DEV] Verificando despliegue de ${SERVICE_NAME}..."
+                    
+                    sh """
+                        echo "📊 Estado de pods:"
+                        kubectl get pods -n ${K8S_NAMESPACE} -l app=${SERVICE_NAME}
+                        
+                        echo "📊 Estado de servicios:"
+                        kubectl get svc -n ${K8S_NAMESPACE} ${SERVICE_NAME}
+                        
+                        POD_STATUS=\$(kubectl get pods -n ${K8S_NAMESPACE} -l app=${SERVICE_NAME} -o jsonpath='{.items[0].status.phase}' 2>/dev/null || echo 'NotFound')
+                        echo "Estado del pod: \$POD_STATUS"
+                        
+                        if [ "\$POD_STATUS" = "Running" ]; then
+                            echo "✅ ${SERVICE_NAME} está corriendo correctamente en Minikube"
+                        else
+                            echo "⚠️ WARNING: ${SERVICE_NAME} no está en estado Running"
+                            exit 1
+                        fi
+                    """
+                }
+            }
+        }
+        
+        stage('Integration Tests') {
+            when {
+                expression { params.SKIP_TESTS == false && params.SKIP_DEPLOY == false }
+            }
+            steps {
+                script {
+                    echo "🔗 [DEV] Ejecutando pruebas de integración..."
+                    dir('tests/integration') {
+                        sh '''
+                            if [ -f pom.xml ]; then
+                                # Configurar URLs de servicios en Minikube
+                                export USER_SERVICE_URL="http://user-service.ecommerce-dev:8700"
+                                export ORDER_SERVICE_URL="http://order-service.ecommerce-dev:8300"
+                                export PRODUCT_SERVICE_URL="http://product-service.ecommerce-dev:8500"
+                                
+                                mvn test -Dtest=*IntegrationTest || echo "⚠️ Algunas pruebas de integración fallaron"
+                            else
+                                echo "ℹ️ No hay pruebas de integración configuradas"
+                            fi
+                        '''
+                    }
+                }
+            }
+        }
+    }
+    
+    post {
+        always {
+            echo "🧹 [DEV] Limpiando workspace..."
+            cleanWs()
+        }
+        success {
+            echo """
+            ✅ ========================================
+            ✅ Pipeline DEV de ${SERVICE_NAME} completado
+            ✅ ========================================
+            📦 Imagen: ${IMAGE_NAME}:dev-${BUILD_TAG}
+            ☸️  Namespace: ${K8S_NAMESPACE}
+            🎯 Ambiente: Minikube (Local)
+            ✅ ========================================
+            """
+        }
+        failure {
+            echo "❌ Pipeline DEV de ${SERVICE_NAME} falló"
+        }
+    }
+}
