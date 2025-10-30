@@ -96,6 +96,12 @@ pipeline {
                     echo "☸️ [DEV] Desplegando ${SERVICE_NAME} en Minikube..."
                     
                     sh """
+                        # Cambiar contexto a Minikube
+                        kubectl config use-context minikube
+                        
+                        # Verificar conexión
+                        kubectl cluster-info
+                        
                         # Crear namespace si no existe
                         kubectl create namespace ${K8S_NAMESPACE} --dry-run=client -o yaml | kubectl apply -f -
                         
