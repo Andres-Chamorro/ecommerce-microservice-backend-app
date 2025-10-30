@@ -1,4 +1,4 @@
-pipeline {
+﻿pipeline {
     agent any
     
     environment {
@@ -77,11 +77,12 @@ pipeline {
                 script {
                     echo "ÃƒÆ’Ã‚Â°Ãƒâ€¦Ã‚Â¸Ãƒâ€šÃ‚ÂÃƒâ€šÃ‚Â³ [DEV] Construyendo imagen Docker de ${SERVICE_NAME}..."
                     sh """
-                        # Usar el Docker daemon de Minikube
-                        eval \$(minikube docker-env) || true
+                        # Construir imagen directamente en Minikube
+                        minikube image build -t ${IMAGE_NAME}:dev-${BUILD_TAG} -f order-service/Dockerfile .
+                        minikube image build -t ${IMAGE_NAME}:dev-latest -f order-service/Dockerfile .
                         
-                        docker build -t ${IMAGE_NAME}:dev-${BUILD_TAG} -f order-service/Dockerfile .
-                        docker tag ${IMAGE_NAME}:dev-${BUILD_TAG} ${IMAGE_NAME}:dev-latest
+                        # Verificar que la imagen existe
+                        minikube image ls | grep ${IMAGE_NAME} || echo "WARNING: Imagen no encontrada"
                     """
                 }
             }
@@ -130,7 +131,7 @@ spec:
         image: ${IMAGE_NAME}:dev-${BUILD_TAG}
         ports:
         - containerPort: ${SERVICE_PORT}
-        imagePullPolicy: IfNotPresent
+        imagePullPolicy: Never
         env:
         - name: SPRING_PROFILES_ACTIVE
           value: "dev"
