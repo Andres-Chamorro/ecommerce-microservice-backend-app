@@ -96,6 +96,9 @@ pipeline {
                     echo "☸️ [DEV] Desplegando ${SERVICE_NAME} en Minikube..."
                     
                     sh """
+                        # Configurar KUBECONFIG explícitamente
+                        export KUBECONFIG=/var/jenkins_home/.kube/config
+                        
                         # Cambiar contexto a Minikube
                         kubectl config use-context minikube
                         
