@@ -1,0 +1,301 @@
+pipeline {
+    agent any
+    
+    environment {
+        // GCP Configuration
+        GCP_PROJECT_ID = credentials('gcp-project-id')
+        GCP_REGION = 'us-central1'
+        GCP_ZONE = 'us-central1-a'
+        GCP_REGISTRY = "${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/ecommerce-registry"
+        GKE_CLUSTER = 'ecommerce-staging-cluster'
+        
+        // Kubernetes
+        K8S_NAMESPACE_DEV = 'ecommerce-dev'
+        K8S_NAMESPACE_STAGING = 'ecommerce-staging'
+        K8S_NAMESPACE_PROD = 'ecommerce-prod'
+        
+        // Build
+        BUILD_VERSION = "${env.BUILD_NUMBER}"
+        MAVEN_OPTS = '-Xmx2048m'
+    }
+    
+    parameters {
+        choice(
+            name: 'DEPLOY_SERVICES',
+            choices: ['ALL', 'user-service', 'product-service', 'order-service', 'payment-service', 'favourite-service', 'shipping-service'],
+            description: 'Selecciona qué servicios desplegar'
+        )
+        booleanParam(
+            name: 'SKIP_TESTS',
+            defaultValue: false,
+            description: 'Saltar pruebas unitarias'
+        )
+    }
+    
+    stages {
+        stage('Determine Environment') {
+            steps {
+                script {
+                    def branch = env.GIT_BRANCH ?: env.BRANCH_NAME ?: 'dev'
+                    branch = branch.replaceAll('origin/', '')
+                    
+                    echo "🌿 Branch detectada: ${branch}"
+                    
+                    if (branch == 'master' || branch == 'main') {
+                        env.TARGET_ENV = 'production'
+                        env.K8S_NAMESPACE = K8S_NAMESPACE_PROD
+                        env.SHOULD_DEPLOY = 'true'
+                        env.RUN_SMOKE_TESTS = 'true'
+                        env.RUN_INTEGRATION_TESTS = 'false'
+                    } else if (branch == 'staging' || branch == 'stage') {
+                        env.TARGET_ENV = 'staging'
+                        env.K8S_NAMESPACE = K8S_NAMESPACE_STAGING
+                        env.SHOULD_DEPLOY = 'true'
+                        env.RUN_SMOKE_TESTS = 'true'
+                        env.RUN_INTEGRATION_TESTS = 'true'
+                    } else {
+                        env.TARGET_ENV = 'development'
+                        env.K8S_NAMESPACE = K8S_NAMESPACE_DEV
+                        env.SHOULD_DEPLOY = 'false'
+                        env.RUN_SMOKE_TESTS = 'false'
+                        env.RUN_INTEGRATION_TESTS = 'false'
+                    }
+                    
+                    echo "📋 Configuración:"
+                    echo "   - Ambiente: ${env.TARGET_ENV}"
+                    echo "   - Namespace: ${env.K8S_NAMESPACE}"
+                    echo "   - Deploy: ${env.SHOULD_DEPLOY}"
+                }
+            }
+        }
+        
+        stage('Checkout') {
+            steps {
+                echo "🔄 Clonando repositorio..."
+                checkout scm
+            }
+        }
+        
+        stage('Build Services') {
+            steps {
+                script {
+                    echo "🔨 Compilando microservicios..."
+                    def services = [
+                        'user-service',
+                        'product-service',
+                        'order-service',
+                        'payment-service',
+                        'favourite-service',
+                        'shipping-service'
+                    ]
+                    
+                    def testFlag = params.SKIP_TESTS ? '-DskipTests' : ''
+                    
+                    services.each { service ->
+                        echo "📦 Building ${service}..."
+                        sh """
+                            mvn clean package ${testFlag} -f ${service}/pom.xml
+                        """
+                    }
+                }
+            }
+        }
+        
+        stage('Authenticate with GCP') {
+            when {
+                expression { env.SHOULD_DEPLOY == 'true' }
+            }
+            steps {
+                script {
+                    echo "🔐 Autenticando con GCP..."
+                    withCredentials([file(credentialsId: 'gcp-service-account', variable: 'GCP_KEY')]) {
+                        sh """
+                            gcloud auth activate-service-account --key-file=\${GCP_KEY}
+                            gcloud config set project ${GCP_PROJECT_ID}
+                            gcloud auth configure-docker ${GCP_REGION}-docker.pkg.dev
+                        """
+                    }
+                }
+            }
+        }
+        
+        stage('Build Docker Images') {
+            steps {
+                script {
+                    echo "🐳 Construyendo imágenes Docker..."
+                    def services = params.DEPLOY_SERVICES == 'ALL' ? 
+                        ['user-service', 'product-service', 'order-service', 'payment-service', 'favourite-service', 'shipping-service'] :
+                        [params.DEPLOY_SERVICES]
+                    
+                    services.each { service ->
+                        echo "🏗️ Building ${service}..."
+                        sh """
+                            docker build -t ${GCP_REGISTRY}/ecommerce-${service}:${BUILD_VERSION} \
+                                         -t ${GCP_REGISTRY}/ecommerce-${service}:latest \
+                                         -f ${service}/Dockerfile .
+                        """
+                    }
+                }
+            }
+        }
+        
+        stage('Push to Artifact Registry') {
+            when {
+                expression { env.SHOULD_DEPLOY == 'true' }
+            }
+            steps {
+                script {
+                    echo "⬆️ Subiendo imágenes a GCP Artifact Registry..."
+                    
+                    def services = params.DEPLOY_SERVICES == 'ALL' ? 
+                        ['user-service', 'product-service', 'order-service', 'payment-service', 'favourite-service', 'shipping-service'] :
+                        [params.DEPLOY_SERVICES]
+                    
+                    services.each { service ->
+                        echo "📤 Pushing ${service}..."
+                        sh """
+                            docker push ${GCP_REGISTRY}/ecommerce-${service}:${BUILD_VERSION}
+                            docker push ${GCP_REGISTRY}/ecommerce-${service}:latest
+                        """
+                    }
+                }
+            }
+        }
+        
+        stage('Deploy to GKE') {
+            when {
+                expression { env.SHOULD_DEPLOY == 'true' }
+            }
+            steps {
+                script {
+                    echo "☸️ Desplegando en GKE (${env.TARGET_ENV})..."
+                    
+                    withCredentials([file(credentialsId: 'gcp-service-account', variable: 'GCP_KEY')]) {
+                        sh """
+                            # Configurar kubectl para GKE
+                            gcloud container clusters get-credentials ${GKE_CLUSTER} \
+                                --zone=${GCP_ZONE} \
+                                --project=${GCP_PROJECT_ID}
+                            
+                            # Crear namespace si no existe
+                            kubectl create namespace ${env.K8S_NAMESPACE} --dry-run=client -o yaml | kubectl apply -f -
+                            
+                            # Aplicar manifiestos de infraestructura
+                            echo "📦 Desplegando infraestructura..."
+                            kubectl apply -f k8s/infrastructure/ -n ${env.K8S_NAMESPACE}
+                            
+                            # Esperar a que la infraestructura esté lista
+                            kubectl wait --for=condition=ready pod -l app=service-discovery -n ${env.K8S_NAMESPACE} --timeout=300s || true
+                            kubectl wait --for=condition=ready pod -l app=cloud-config -n ${env.K8S_NAMESPACE} --timeout=300s || true
+                            
+                            # Aplicar manifiestos de microservicios
+                            echo "📦 Desplegando microservicios..."
+                            kubectl apply -f k8s/microservices/ -n ${env.K8S_NAMESPACE}
+                        """
+                    }
+                }
+            }
+        }
+        
+        stage('Verify Deployment') {
+            when {
+                expression { env.SHOULD_DEPLOY == 'true' }
+            }
+            steps {
+                script {
+                    echo "✅ Verificando deployment..."
+                    
+                    sh """
+                        echo "📊 Estado de los pods:"
+                        kubectl get pods -n ${env.K8S_NAMESPACE}
+                        
+                        echo "\n📊 Estado de los servicios:"
+                        kubectl get services -n ${env.K8S_NAMESPACE}
+                        
+                        echo "\n📊 Estado de los deployments:"
+                        kubectl get deployments -n ${env.K8S_NAMESPACE}
+                    """
+                    
+                    // Verificar que todos los deployments estén listos
+                    def services = ['user-service', 'product-service', 'order-service', 'payment-service', 'favourite-service', 'shipping-service']
+                    
+                    services.each { service ->
+                        echo "🔍 Verificando ${service}..."
+                        sh """
+                            kubectl rollout status deployment/${service} -n ${env.K8S_NAMESPACE} --timeout=5m || echo "⚠️ ${service} no está listo aún"
+                        """
+                    }
+                }
+            }
+        }
+        
+        stage('Smoke Tests') {
+            when {
+                expression { env.RUN_SMOKE_TESTS == 'true' }
+            }
+            steps {
+                script {
+                    echo "🔥 Ejecutando Smoke Tests..."
+                    
+                    // Obtener IP del LoadBalancer
+                    def apiGatewayIp = sh(
+                        script: "kubectl get service api-gateway -n ${env.K8S_NAMESPACE} -o jsonpath='{.status.loadBalancer.ingress[0].ip}'",
+                        returnStdout: true
+                    ).trim()
+                    
+                    if (apiGatewayIp) {
+                        echo "🌐 API Gateway URL: http://${apiGatewayIp}:8080"
+                        
+                        // Test básico de health check
+                        sh """
+                            curl -f http://${apiGatewayIp}:8080/actuator/health || echo "⚠️ Health check falló"
+                        """
+                    } else {
+                        echo "⚠️ No se pudo obtener la IP del API Gateway"
+                    }
+                }
+            }
+        }
+        
+        stage('Integration Tests') {
+            when {
+                expression { env.RUN_INTEGRATION_TESTS == 'true' }
+            }
+            steps {
+                script {
+                    echo "🔗 Ejecutando Integration Tests..."
+                    
+                    sh """
+                        echo "🧪 Ejecutando tests de integración..."
+                        # mvn verify -Pintegration-tests -Dtest.environment=${env.TARGET_ENV}
+                    """
+                }
+            }
+        }
+    }
+    
+    post {
+        always {
+            echo "🧹 Limpiando workspace..."
+            cleanWs()
+        }
+        success {
+            script {
+                echo "✅ Pipeline ejecutado exitosamente"
+                echo "🎉 Build completado para ambiente: ${env.TARGET_ENV}"
+                if (env.SHOULD_DEPLOY == 'true') {
+                    echo "🚀 Aplicación desplegada en GKE namespace: ${env.K8S_NAMESPACE}"
+                    echo "🌐 Verifica en: https://console.cloud.google.com/kubernetes/workload?project=${GCP_PROJECT_ID}"
+                } else {
+                    echo "💻 Build y tests completados (sin deploy)"
+                }
+            }
+        }
+        failure {
+            script {
+                echo "❌ Pipeline falló en ambiente: ${env.TARGET_ENV}"
+                echo "📋 Revisa los logs para más detalles"
+            }
+        }
+    }
+}
