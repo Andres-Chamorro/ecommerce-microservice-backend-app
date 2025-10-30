@@ -1,4 +1,4 @@
-﻿pipeline {
+pipeline {
     agent any
     
     environment {
@@ -14,9 +14,8 @@
         MAVEN_OPTS = '-Xmx2048m'
         BUILD_TAG = "${env.BUILD_NUMBER}"
         
-        // Docker Registry (ajusta segÃºn tu registry)
-        DOCKER_REGISTRY = 'us-central1-docker.pkg.dev/ecommerce-microservices-476519/ecommerce-registry' // Cambiar si usas Docker Hub o GCR
-        IMAGE_NAME = "${DOCKER_REGISTRY}/${SERVICE_NAME}"
+        // Docker - Local para Minikube
+        IMAGE_NAME = "${SERVICE_NAME}"
         
         // Minikube Configuration
         K8S_NAMESPACE = 'ecommerce-dev'
@@ -26,7 +25,7 @@
         booleanParam(
             name: 'SKIP_TESTS',
             defaultValue: false,
-            description: 'Saltar pruebas unitarias e integraciÃ³n'
+            description: 'Saltar pruebas unitarias e integración'
         )
         booleanParam(
             name: 'SKIP_DEPLOY',
@@ -38,7 +37,7 @@
     stages {
         stage('Checkout') {
             steps {
-                echo "ðŸ”„ [DEV] Clonando repositorio de ${SERVICE_NAME}..."
+                echo "📄 [DEV] Clonando repositorio de ${SERVICE_NAME}..."
                 checkout scm
             }
         }
@@ -46,7 +45,7 @@
         stage('Build Maven') {
             steps {
                 script {
-                    echo "ðŸ”¨ [DEV] Compilando ${SERVICE_NAME} con Maven..."
+                    echo "🔨 [DEV] Compilando ${SERVICE_NAME} con Maven..."
                     dir('user-service') {
                         sh 'mvn clean package -DskipTests'
                     }
@@ -60,7 +59,7 @@
             }
             steps {
                 script {
-                    echo "ðŸ§ª [DEV] Ejecutando pruebas unitarias de ${SERVICE_NAME}..."
+                    echo "🧪 [DEV] Ejecutando pruebas unitarias de ${SERVICE_NAME}..."
                     dir('user-service') {
                         sh 'mvn test -Dtest=*ServiceTest,*ResourceTest'
                     }
@@ -73,45 +72,16 @@
             }
         }
         
-        stage('Integration Tests') {
-            when {
-                expression { params.SKIP_TESTS == false }
-            }
-            steps {
-                script {
-                    echo "ðŸ”— [DEV] Ejecutando pruebas de integraciÃ³n..."
-                    dir('tests/integration') {
-                        sh '''
-                            if [ -f pom.xml ]; then
-                                mvn test -Dtest=*IntegrationTest || echo "âš ï¸ Pruebas de integraciÃ³n requieren servicios activos"
-                            else
-                                echo "â„¹ï¸ No hay pruebas de integraciÃ³n configuradas"
-                            fi
-                        '''
-                    }
-                }
-            }
-        }
-        
         stage('Build Docker Image') {
             steps {
                 script {
-                    echo "ðŸ³ [DEV] Construyendo imagen Docker de ${SERVICE_NAME}..."
+                    echo "🐳 [DEV] Construyendo imagen Docker de ${SERVICE_NAME}..."
                     sh """
+                        # Usar el Docker daemon de Minikube
+                        eval \$(minikube docker-env) || true
+                        
                         docker build -t ${IMAGE_NAME}:dev-${BUILD_TAG} -f user-service/Dockerfile .
                         docker tag ${IMAGE_NAME}:dev-${BUILD_TAG} ${IMAGE_NAME}:dev-latest
-                    """
-                }
-            }
-        }
-        
-        stage('Push to Registry') {
-            steps {
-                script {
-                    echo "ðŸ“¦ [DEV] Subiendo imagen a registry..."
-                    sh """
-                        docker push ${IMAGE_NAME}:dev-${BUILD_TAG}
-                        docker push ${IMAGE_NAME}:dev-latest
                     """
                 }
             }
@@ -123,7 +93,7 @@
             }
             steps {
                 script {
-                    echo "â˜¸ï¸ [DEV] Desplegando ${SERVICE_NAME} en Minikube..."
+                    echo "☸️ [DEV] Desplegando ${SERVICE_NAME} en Minikube..."
                     
                     sh """
                         # Crear namespace si no existe
@@ -151,7 +121,10 @@ spec:
         image: ${IMAGE_NAME}:dev-${BUILD_TAG}
         ports:
         - containerPort: ${SERVICE_PORT}
-        imagePullPolicy: Always
+        imagePullPolicy: IfNotPresent
+        env:
+        - name: SPRING_PROFILES_ACTIVE
+          value: "dev"
 ---
 apiVersion: v1
 kind: Service
@@ -167,8 +140,8 @@ spec:
   type: ClusterIP
 EOF
                         
-                        # Esperar a que el deployment estÃ© listo
-                        kubectl rollout status deployment/${SERVICE_NAME} -n ${K8S_NAMESPACE} --timeout=180s || echo "âš ï¸ ${SERVICE_NAME} no estÃ¡ listo"
+                        # Esperar a que el deployment esté listo
+                        kubectl rollout status deployment/${SERVICE_NAME} -n ${K8S_NAMESPACE} --timeout=180s || echo "⚠️ ${SERVICE_NAME} no está listo"
                     """
                 }
             }
@@ -180,25 +153,50 @@ EOF
             }
             steps {
                 script {
-                    echo "âœ… [DEV] Verificando despliegue de ${SERVICE_NAME}..."
+                    echo "✅ [DEV] Verificando despliegue de ${SERVICE_NAME}..."
                     
                     sh """
-                        echo "ðŸ“Š Estado de pods:"
+                        echo "📊 Estado de pods:"
                         kubectl get pods -n ${K8S_NAMESPACE} -l app=${SERVICE_NAME}
                         
-                        echo "ðŸ“Š Estado de servicios:"
+                        echo "📊 Estado de servicios:"
                         kubectl get svc -n ${K8S_NAMESPACE} ${SERVICE_NAME}
                         
                         POD_STATUS=\$(kubectl get pods -n ${K8S_NAMESPACE} -l app=${SERVICE_NAME} -o jsonpath='{.items[0].status.phase}' 2>/dev/null || echo 'NotFound')
                         echo "Estado del pod: \$POD_STATUS"
                         
                         if [ "\$POD_STATUS" = "Running" ]; then
-                            echo "âœ… ${SERVICE_NAME} estÃ¡ corriendo correctamente en Minikube"
+                            echo "✅ ${SERVICE_NAME} está corriendo correctamente en Minikube"
                         else
-                            echo "âš ï¸ WARNING: ${SERVICE_NAME} no estÃ¡ en estado Running"
+                            echo "⚠️ WARNING: ${SERVICE_NAME} no está en estado Running"
                             exit 1
                         fi
                     """
+                }
+            }
+        }
+        
+        stage('Integration Tests') {
+            when {
+                expression { params.SKIP_TESTS == false && params.SKIP_DEPLOY == false }
+            }
+            steps {
+                script {
+                    echo "🔗 [DEV] Ejecutando pruebas de integración..."
+                    dir('tests/integration') {
+                        sh '''
+                            if [ -f pom.xml ]; then
+                                # Configurar URLs de servicios en Minikube
+                                export USER_SERVICE_URL="http://user-service.ecommerce-dev:8700"
+                                export ORDER_SERVICE_URL="http://order-service.ecommerce-dev:8300"
+                                export PRODUCT_SERVICE_URL="http://product-service.ecommerce-dev:8500"
+                                
+                                mvn test -Dtest=*IntegrationTest || echo "⚠️ Algunas pruebas de integración fallaron"
+                            else
+                                echo "ℹ️ No hay pruebas de integración configuradas"
+                            fi
+                        '''
+                    }
                 }
             }
         }
@@ -206,22 +204,22 @@ EOF
     
     post {
         always {
-            echo "ðŸ§¹ [DEV] Limpiando workspace..."
+            echo "🧹 [DEV] Limpiando workspace..."
             cleanWs()
         }
         success {
             echo """
-            âœ… ========================================
-            âœ… Pipeline DEV de ${SERVICE_NAME} completado
-            âœ… ========================================
-            ðŸ“¦ Imagen: ${IMAGE_NAME}:dev-${BUILD_TAG}
-            â˜¸ï¸  Namespace: ${K8S_NAMESPACE}
-            ðŸŽ¯ Ambiente: Minikube (Local)
-            âœ… ========================================
+            ✅ ========================================
+            ✅ Pipeline DEV de ${SERVICE_NAME} completado
+            ✅ ========================================
+            📦 Imagen: ${IMAGE_NAME}:dev-${BUILD_TAG}
+            ☸️  Namespace: ${K8S_NAMESPACE}
+            🎯 Ambiente: Minikube (Local)
+            ✅ ========================================
             """
         }
         failure {
-            echo "âŒ Pipeline DEV de ${SERVICE_NAME} fallÃ³"
+            echo "❌ Pipeline DEV de ${SERVICE_NAME} falló"
         }
     }
 }
