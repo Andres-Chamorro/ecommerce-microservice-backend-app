@@ -25,7 +25,7 @@ pipeline {
         booleanParam(
             name: 'SKIP_TESTS',
             defaultValue: false,
-            description: 'Saltar pruebas unitarias e integraciÃƒÂ³n'
+            description: 'Saltar pruebas unitarias e integraciÃƒÆ’Ã‚Â³n'
         )
         booleanParam(
             name: 'SKIP_DEPLOY',
@@ -37,7 +37,7 @@ pipeline {
     stages {
         stage('Checkout') {
             steps {
-                echo "Ã°Å¸â€œâ€ž [DEV] Clonando repositorio de ${SERVICE_NAME}..."
+                echo "ÃƒÂ°Ã…Â¸Ã¢â‚¬Å“Ã¢â‚¬Å¾ [DEV] Clonando repositorio de ${SERVICE_NAME}..."
                 checkout scm
             }
         }
@@ -45,7 +45,7 @@ pipeline {
         stage('Build Maven') {
             steps {
                 script {
-                    echo "Ã°Å¸â€Â¨ [DEV] Compilando ${SERVICE_NAME} con Maven..."
+                    echo "ÃƒÂ°Ã…Â¸Ã¢â‚¬ÂÃ‚Â¨ [DEV] Compilando ${SERVICE_NAME} con Maven..."
                     dir('shipping-service') {
                         sh 'mvn clean package -DskipTests'
                     }
@@ -59,7 +59,7 @@ pipeline {
             }
             steps {
                 script {
-                    echo "Ã°Å¸Â§Âª [DEV] Ejecutando pruebas unitarias de ${SERVICE_NAME}..."
+                    echo "ÃƒÂ°Ã…Â¸Ã‚Â§Ã‚Âª [DEV] Ejecutando pruebas unitarias de ${SERVICE_NAME}..."
                     dir('shipping-service') {
                         sh 'mvn test -Dtest=*ServiceTest,*ResourceTest'
                     }
@@ -75,7 +75,7 @@ pipeline {
         stage('Build Docker Image') {
             steps {
                 script {
-                    echo "Ã°Å¸ÂÂ³ [DEV] Construyendo imagen Docker de ${SERVICE_NAME}..."
+                    echo "ÃƒÂ°Ã…Â¸Ã‚ÂÃ‚Â³ [DEV] Construyendo imagen Docker de ${SERVICE_NAME}..."
                     sh """
                         # Usar el Docker daemon de Minikube
                         eval \$(minikube docker-env) || true
@@ -93,13 +93,16 @@ pipeline {
             }
             steps {
                 script {
-                    echo "Ã¢ËœÂ¸Ã¯Â¸Â [DEV] Desplegando ${SERVICE_NAME} en Minikube..."
+                    echo "ÃƒÂ¢Ã‹Å“Ã‚Â¸ÃƒÂ¯Ã‚Â¸Ã‚Â [DEV] Desplegando ${SERVICE_NAME} en Minikube..."
                     
                     sh """
+                        # Configurar KUBECONFIG explícitamente
+                        export KUBECONFIG=/var/jenkins_home/.kube/config
+                        
                         # Cambiar contexto a Minikube
                         kubectl config use-context minikube
                         
-                        # Verificar conexión
+                        # Verificar conexiÃ³n
                         kubectl cluster-info
                         
                         # Crear namespace si no existe
@@ -146,8 +149,8 @@ spec:
   type: ClusterIP
 EOF
                         
-                        # Esperar a que el deployment estÃƒÂ© listo
-                        kubectl rollout status deployment/${SERVICE_NAME} -n ${K8S_NAMESPACE} --timeout=180s || echo "Ã¢Å¡Â Ã¯Â¸Â ${SERVICE_NAME} no estÃƒÂ¡ listo"
+                        # Esperar a que el deployment estÃƒÆ’Ã‚Â© listo
+                        kubectl rollout status deployment/${SERVICE_NAME} -n ${K8S_NAMESPACE} --timeout=180s || echo "ÃƒÂ¢Ã…Â¡Ã‚Â ÃƒÂ¯Ã‚Â¸Ã‚Â ${SERVICE_NAME} no estÃƒÆ’Ã‚Â¡ listo"
                     """
                 }
             }
@@ -159,22 +162,22 @@ EOF
             }
             steps {
                 script {
-                    echo "Ã¢Å“â€¦ [DEV] Verificando despliegue de ${SERVICE_NAME}..."
+                    echo "ÃƒÂ¢Ã…â€œÃ¢â‚¬Â¦ [DEV] Verificando despliegue de ${SERVICE_NAME}..."
                     
                     sh """
-                        echo "Ã°Å¸â€œÅ  Estado de pods:"
+                        echo "ÃƒÂ°Ã…Â¸Ã¢â‚¬Å“Ã…Â  Estado de pods:"
                         kubectl get pods -n ${K8S_NAMESPACE} -l app=${SERVICE_NAME}
                         
-                        echo "Ã°Å¸â€œÅ  Estado de servicios:"
+                        echo "ÃƒÂ°Ã…Â¸Ã¢â‚¬Å“Ã…Â  Estado de servicios:"
                         kubectl get svc -n ${K8S_NAMESPACE} ${SERVICE_NAME}
                         
                         POD_STATUS=\$(kubectl get pods -n ${K8S_NAMESPACE} -l app=${SERVICE_NAME} -o jsonpath='{.items[0].status.phase}' 2>/dev/null || echo 'NotFound')
                         echo "Estado del pod: \$POD_STATUS"
                         
                         if [ "\$POD_STATUS" = "Running" ]; then
-                            echo "Ã¢Å“â€¦ ${SERVICE_NAME} estÃƒÂ¡ corriendo correctamente en Minikube"
+                            echo "ÃƒÂ¢Ã…â€œÃ¢â‚¬Â¦ ${SERVICE_NAME} estÃƒÆ’Ã‚Â¡ corriendo correctamente en Minikube"
                         else
-                            echo "Ã¢Å¡Â Ã¯Â¸Â WARNING: ${SERVICE_NAME} no estÃƒÂ¡ en estado Running"
+                            echo "ÃƒÂ¢Ã…Â¡Ã‚Â ÃƒÂ¯Ã‚Â¸Ã‚Â WARNING: ${SERVICE_NAME} no estÃƒÆ’Ã‚Â¡ en estado Running"
                             exit 1
                         fi
                     """
@@ -188,7 +191,7 @@ EOF
             }
             steps {
                 script {
-                    echo "Ã°Å¸â€â€” [DEV] Ejecutando pruebas de integraciÃƒÂ³n..."
+                    echo "ÃƒÂ°Ã…Â¸Ã¢â‚¬ÂÃ¢â‚¬â€ [DEV] Ejecutando pruebas de integraciÃƒÆ’Ã‚Â³n..."
                     dir('tests/integration') {
                         sh '''
                             if [ -f pom.xml ]; then
@@ -197,9 +200,9 @@ EOF
                                 export ORDER_SERVICE_URL="http://order-service.ecommerce-dev:8300"
                                 export PRODUCT_SERVICE_URL="http://product-service.ecommerce-dev:8500"
                                 
-                                mvn test -Dtest=*IntegrationTest || echo "Ã¢Å¡Â Ã¯Â¸Â Algunas pruebas de integraciÃƒÂ³n fallaron"
+                                mvn test -Dtest=*IntegrationTest || echo "ÃƒÂ¢Ã…Â¡Ã‚Â ÃƒÂ¯Ã‚Â¸Ã‚Â Algunas pruebas de integraciÃƒÆ’Ã‚Â³n fallaron"
                             else
-                                echo "Ã¢â€žÂ¹Ã¯Â¸Â No hay pruebas de integraciÃƒÂ³n configuradas"
+                                echo "ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¹ÃƒÂ¯Ã‚Â¸Ã‚Â No hay pruebas de integraciÃƒÆ’Ã‚Â³n configuradas"
                             fi
                         '''
                     }
@@ -210,22 +213,22 @@ EOF
     
     post {
         always {
-            echo "Ã°Å¸Â§Â¹ [DEV] Limpiando workspace..."
+            echo "ÃƒÂ°Ã…Â¸Ã‚Â§Ã‚Â¹ [DEV] Limpiando workspace..."
             cleanWs()
         }
         success {
             echo """
-            Ã¢Å“â€¦ ========================================
-            Ã¢Å“â€¦ Pipeline DEV de ${SERVICE_NAME} completado
-            Ã¢Å“â€¦ ========================================
-            Ã°Å¸â€œÂ¦ Imagen: ${IMAGE_NAME}:dev-${BUILD_TAG}
-            Ã¢ËœÂ¸Ã¯Â¸Â  Namespace: ${K8S_NAMESPACE}
-            Ã°Å¸Å½Â¯ Ambiente: Minikube (Local)
-            Ã¢Å“â€¦ ========================================
+            ÃƒÂ¢Ã…â€œÃ¢â‚¬Â¦ ========================================
+            ÃƒÂ¢Ã…â€œÃ¢â‚¬Â¦ Pipeline DEV de ${SERVICE_NAME} completado
+            ÃƒÂ¢Ã…â€œÃ¢â‚¬Â¦ ========================================
+            ÃƒÂ°Ã…Â¸Ã¢â‚¬Å“Ã‚Â¦ Imagen: ${IMAGE_NAME}:dev-${BUILD_TAG}
+            ÃƒÂ¢Ã‹Å“Ã‚Â¸ÃƒÂ¯Ã‚Â¸Ã‚Â  Namespace: ${K8S_NAMESPACE}
+            ÃƒÂ°Ã…Â¸Ã…Â½Ã‚Â¯ Ambiente: Minikube (Local)
+            ÃƒÂ¢Ã…â€œÃ¢â‚¬Â¦ ========================================
             """
         }
         failure {
-            echo "Ã¢ÂÅ’ Pipeline DEV de ${SERVICE_NAME} fallÃƒÂ³"
+            echo "ÃƒÂ¢Ã‚ÂÃ…â€™ Pipeline DEV de ${SERVICE_NAME} fallÃƒÆ’Ã‚Â³"
         }
     }
 }
