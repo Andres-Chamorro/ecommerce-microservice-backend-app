@@ -35,3 +35,13 @@ build/
 # Python cache
 __pycache__/
 *.pyc
+
+# Google Cloud credentials
+*.json
+!package.json
+!package-lock.json
+jenkins-gcp-key.json
+jenkins-gke-key.json
+
+# Environment files with secrets
+.env.gcp
