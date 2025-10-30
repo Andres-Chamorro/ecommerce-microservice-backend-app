@@ -165,6 +165,9 @@ EOF
                     echo "âœ… [DEV] Verificando despliegue de ${SERVICE_NAME}..."
                     
                     sh """
+                        export KUBECONFIG=/var/jenkins_home/.kube/config
+                        kubectl config use-context minikube
+                        
                         echo "ðŸ“Š Estado de pods:"
                         kubectl get pods -n ${K8S_NAMESPACE} -l app=${SERVICE_NAME}
                         
