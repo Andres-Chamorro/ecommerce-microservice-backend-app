@@ -4,109 +4,140 @@
     environment {
         // Java Configuration
         JAVA_HOME = '/usr/lib/jvm/java-17-openjdk-amd64'
-        PATH = "/root/google-cloud-sdk/bin:${JAVA_HOME}/bin:${env.PATH}"
-        
-        // GCP & Kubernetes
-        USE_GKE_GCLOUD_AUTH_PLUGIN = 'True'
-        K8S_NAMESPACE = 'ecommerce-staging'
+        PATH = "${JAVA_HOME}/bin:${env.PATH}"
         
         // Service Configuration
         SERVICE_NAME = 'payment-service'
         SERVICE_PORT = '8400'
         
-        // Docker Registry
+        // Build Configuration
+        MAVEN_OPTS = '-Xmx2048m'
+        BUILD_TAG = "${env.BUILD_NUMBER}"
+        
+        // Docker Registry (ajusta segÃºn tu registry)
         DOCKER_REGISTRY = 'us-central1-docker.pkg.dev/ecommerce-microservices-476519/ecommerce-registry' // Cambiar si usas Docker Hub o GCR
         IMAGE_NAME = "${DOCKER_REGISTRY}/${SERVICE_NAME}"
         
-        // Build Reference
-        BUILD_TAG = "${env.BUILD_NUMBER}"
-        DEV_BUILD_NUMBER = "${env.DEV_BUILD_NUMBER ?: 'latest'}" // NÃºmero de build de DEV
+        // Minikube Configuration
+        K8S_NAMESPACE = 'ecommerce-dev'
     }
     
     parameters {
-        string(
-            name: 'DEV_BUILD_NUMBER',
-            defaultValue: 'latest',
-            description: 'NÃºmero de build de DEV a desplegar (ej: 123) o "latest"'
+        booleanParam(
+            name: 'SKIP_TESTS',
+            defaultValue: false,
+            description: 'Saltar pruebas unitarias e integraciÃ³n'
         )
         booleanParam(
-            name: 'SKIP_E2E_TESTS',
+            name: 'SKIP_DEPLOY',
             defaultValue: false,
-            description: 'Saltar pruebas E2E'
-        )
-        booleanParam(
-            name: 'SKIP_PERFORMANCE_TESTS',
-            defaultValue: false,
-            description: 'Saltar pruebas de rendimiento'
+            description: 'Saltar despliegue en Minikube'
         )
     }
     
     stages {
         stage('Checkout') {
             steps {
-                echo "ðŸ”„ [STAGING] Clonando repositorio de ${SERVICE_NAME}..."
+                echo "ðŸ”„ [DEV] Clonando repositorio de ${SERVICE_NAME}..."
                 checkout scm
             }
         }
         
-        stage('Pull Image from Dev') {
+        stage('Build Maven') {
             steps {
                 script {
-                    echo "ðŸ“¥ [STAGING] Obteniendo imagen de DEV..."
-                    def devTag = params.DEV_BUILD_NUMBER == 'latest' ? 'dev-latest' : "dev-${params.DEV_BUILD_NUMBER}"
-                    
+                    echo "ðŸ”¨ [DEV] Compilando ${SERVICE_NAME} con Maven..."
+                    dir('payment-service') {
+                        sh 'mvn clean package -DskipTests'
+                    }
+                }
+            }
+        }
+        
+        stage('Unit Tests') {
+            when {
+                expression { params.SKIP_TESTS == false }
+            }
+            steps {
+                script {
+                    echo "ðŸ§ª [DEV] Ejecutando pruebas unitarias de ${SERVICE_NAME}..."
+                    dir('payment-service') {
+                        sh 'mvn test -Dtest=*ServiceTest,*ResourceTest'
+                    }
+                }
+            }
+            post {
+                always {
+                    junit allowEmptyResults: true, testResults: 'payment-service/target/surefire-reports/*.xml'
+                }
+            }
+        }
+        
+        stage('Integration Tests') {
+            when {
+                expression { params.SKIP_TESTS == false }
+            }
+            steps {
+                script {
+                    echo "ðŸ”— [DEV] Ejecutando pruebas de integraciÃ³n..."
+                    dir('tests/integration') {
+                        sh '''
+                            if [ -f pom.xml ]; then
+                                mvn test -Dtest=*IntegrationTest || echo "âš ï¸ Pruebas de integraciÃ³n requieren servicios activos"
+                            else
+                                echo "â„¹ï¸ No hay pruebas de integraciÃ³n configuradas"
+                            fi
+                        '''
+                    }
+                }
+            }
+        }
+        
+        stage('Build Docker Image') {
+            steps {
+                script {
+                    echo "ðŸ³ [DEV] Construyendo imagen Docker de ${SERVICE_NAME}..."
                     sh """
-                        echo "Pulling imagen: ${IMAGE_NAME}:${devTag}"
-                        docker pull ${IMAGE_NAME}:${devTag}
+                        docker build -t ${IMAGE_NAME}:dev-${BUILD_TAG} -f payment-service/Dockerfile .
+                        docker tag ${IMAGE_NAME}:dev-${BUILD_TAG} ${IMAGE_NAME}:dev-latest
                     """
                 }
             }
         }
         
-        stage('Retag Image') {
+        stage('Push to Registry') {
             steps {
                 script {
-                    echo "ðŸ·ï¸ [STAGING] Re-etiquetando imagen para staging..."
-                    def devTag = params.DEV_BUILD_NUMBER == 'latest' ? 'dev-latest' : "dev-${params.DEV_BUILD_NUMBER}"
-                    
+                    echo "ðŸ“¦ [DEV] Subiendo imagen a registry..."
                     sh """
-                        docker tag ${IMAGE_NAME}:${devTag} ${IMAGE_NAME}:staging-${BUILD_TAG}
-                        docker tag ${IMAGE_NAME}:${devTag} ${IMAGE_NAME}:staging-latest
-                        
-                        echo "Subiendo imagen a registry..."
-                        docker push ${IMAGE_NAME}:staging-${BUILD_TAG}
-                        docker push ${IMAGE_NAME}:staging-latest
+                        docker push ${IMAGE_NAME}:dev-${BUILD_TAG}
+                        docker push ${IMAGE_NAME}:dev-latest
                     """
                 }
             }
         }
         
-        stage('Deploy to GKE Staging') {
+        stage('Deploy to Minikube') {
+            when {
+                expression { params.SKIP_DEPLOY == false }
+            }
             steps {
                 script {
-                    echo "â˜¸ï¸ [STAGING] Desplegando ${SERVICE_NAME} en GKE Staging..."
+                    echo "â˜¸ï¸ [DEV] Desplegando ${SERVICE_NAME} en Minikube..."
                     
                     sh """
-                        . /root/google-cloud-sdk/path.bash.inc
-                        
                         # Crear namespace si no existe
                         kubectl create namespace ${K8S_NAMESPACE} --dry-run=client -o yaml | kubectl apply -f -
                         
-                        # Aplicar deployment desde k8s/microservices
-                        if [ -f k8s/microservices/${SERVICE_NAME}-deployment.yaml ]; then
-                            # Actualizar la imagen en el deployment
-                            kubectl set image deployment/${SERVICE_NAME} ${SERVICE_NAME}=${IMAGE_NAME}:staging-${BUILD_TAG} -n ${K8S_NAMESPACE} || \
-                            kubectl apply -f k8s/microservices/${SERVICE_NAME}-deployment.yaml -n ${K8S_NAMESPACE}
-                        else
-                            echo "âš ï¸ No se encontrÃ³ deployment YAML, creando uno temporal..."
-                            cat <<EOF | kubectl apply -f -
+                        # Crear deployment temporal para dev
+                        cat <<EOF | kubectl apply -f -
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: ${SERVICE_NAME}
   namespace: ${K8S_NAMESPACE}
 spec:
-  replicas: 2
+  replicas: 1
   selector:
     matchLabels:
       app: ${SERVICE_NAME}
@@ -117,7 +148,7 @@ spec:
     spec:
       containers:
       - name: ${SERVICE_NAME}
-        image: ${IMAGE_NAME}:staging-${BUILD_TAG}
+        image: ${IMAGE_NAME}:dev-${BUILD_TAG}
         ports:
         - containerPort: ${SERVICE_PORT}
         imagePullPolicy: Always
@@ -133,126 +164,25 @@ spec:
   ports:
   - port: ${SERVICE_PORT}
     targetPort: ${SERVICE_PORT}
-  type: LoadBalancer
+  type: ClusterIP
 EOF
-                        fi
+                        
+                        # Esperar a que el deployment estÃ© listo
+                        kubectl rollout status deployment/${SERVICE_NAME} -n ${K8S_NAMESPACE} --timeout=180s || echo "âš ï¸ ${SERVICE_NAME} no estÃ¡ listo"
                     """
                 }
             }
         }
         
-        stage('Wait for Rollout') {
-            steps {
-                script {
-                    echo "â³ [STAGING] Esperando a que el despliegue estÃ© listo..."
-                    
-                    sh """
-                        . /root/google-cloud-sdk/path.bash.inc
-                        
-                        kubectl rollout status deployment/${SERVICE_NAME} -n ${K8S_NAMESPACE} --timeout=300s
-                        
-                        echo "âœ… Despliegue completado"
-                    """
-                }
-            }
-        }
-        
-        stage('E2E Tests') {
+        stage('Verify Deployment') {
             when {
-                expression { params.SKIP_E2E_TESTS == false }
+                expression { params.SKIP_DEPLOY == false }
             }
             steps {
                 script {
-                    echo "ðŸ§ª [STAGING] Ejecutando pruebas E2E..."
+                    echo "âœ… [DEV] Verificando despliegue de ${SERVICE_NAME}..."
                     
                     sh """
-                        . /root/google-cloud-sdk/path.bash.inc
-                        
-                        # Obtener la URL del servicio
-                        SERVICE_URL=\$(kubectl get svc ${SERVICE_NAME} -n ${K8S_NAMESPACE} -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo 'localhost')
-                        echo "Service URL: \$SERVICE_URL:${SERVICE_PORT}"
-                        
-                        # Ejecutar pruebas E2E si existen
-                        if [ -d tests/e2e ]; then
-                            cd tests/e2e
-                            mvn test -Dtest=*E2ETest -Dservice.url=http://\$SERVICE_URL:${SERVICE_PORT} || echo "âš ï¸ Algunas pruebas E2E fallaron"
-                        else
-                            echo "â„¹ï¸ No hay pruebas E2E configuradas"
-                        fi
-                    """
-                }
-            }
-            post {
-                always {
-                    junit allowEmptyResults: true, testResults: 'tests/e2e/target/surefire-reports/*.xml'
-                }
-            }
-        }
-        
-        stage('Performance Tests') {
-            when {
-                expression { params.SKIP_PERFORMANCE_TESTS == false }
-            }
-            steps {
-                script {
-                    echo "âš¡ [STAGING] Ejecutando pruebas de rendimiento con Locust..."
-                    
-                    sh """
-                        . /root/google-cloud-sdk/path.bash.inc
-                        
-                        # Obtener la URL del servicio
-                        SERVICE_URL=\$(kubectl get svc ${SERVICE_NAME} -n ${K8S_NAMESPACE} -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo 'localhost')
-                        
-                        if [ -f tests/performance/locustfile.py ]; then
-                            cd tests/performance
-                            
-                            # Instalar locust si no estÃ¡ instalado
-                            pip3 install locust || echo "Locust ya instalado"
-                            
-                            # Ejecutar Locust en modo headless (sin UI)
-                            locust -f locustfile.py --host=http://\$SERVICE_URL:${SERVICE_PORT} \\
-                                --users 50 --spawn-rate 5 --run-time 2m --headless \\
-                                --html=locust-report.html || echo "âš ï¸ Pruebas de rendimiento completadas con warnings"
-                        else
-                            echo "â„¹ï¸ No hay pruebas de rendimiento configuradas"
-                        fi
-                    """
-                }
-            }
-            post {
-                always {
-                    archiveArtifacts artifacts: 'tests/performance/locust-report.html', allowEmptyArchive: true
-                }
-            }
-        }
-        
-        stage('Generate Test Report') {
-            steps {
-                script {
-                    echo "ðŸ“Š [STAGING] Generando reporte de pruebas..."
-                    
-                    sh """
-                        echo "==================================="
-                        echo "REPORTE DE PRUEBAS - STAGING"
-                        echo "==================================="
-                        echo "Servicio: ${SERVICE_NAME}"
-                        echo "Build: ${BUILD_TAG}"
-                        echo "Namespace: ${K8S_NAMESPACE}"
-                        echo "Imagen: ${IMAGE_NAME}:staging-${BUILD_TAG}"
-                        echo "==================================="
-                    """
-                }
-            }
-        }
-        
-        stage('Verify Health Checks') {
-            steps {
-                script {
-                    echo "ðŸ¥ [STAGING] Verificando health checks..."
-                    
-                    sh """
-                        . /root/google-cloud-sdk/path.bash.inc
-                        
                         echo "ðŸ“Š Estado de pods:"
                         kubectl get pods -n ${K8S_NAMESPACE} -l app=${SERVICE_NAME}
                         
@@ -260,9 +190,10 @@ EOF
                         kubectl get svc -n ${K8S_NAMESPACE} ${SERVICE_NAME}
                         
                         POD_STATUS=\$(kubectl get pods -n ${K8S_NAMESPACE} -l app=${SERVICE_NAME} -o jsonpath='{.items[0].status.phase}' 2>/dev/null || echo 'NotFound')
+                        echo "Estado del pod: \$POD_STATUS"
                         
                         if [ "\$POD_STATUS" = "Running" ]; then
-                            echo "âœ… ${SERVICE_NAME} estÃ¡ corriendo correctamente en GKE Staging"
+                            echo "âœ… ${SERVICE_NAME} estÃ¡ corriendo correctamente en Minikube"
                         else
                             echo "âš ï¸ WARNING: ${SERVICE_NAME} no estÃ¡ en estado Running"
                             exit 1
@@ -275,24 +206,22 @@ EOF
     
     post {
         always {
-            echo "ðŸ§¹ [STAGING] Limpiando workspace..."
+            echo "ðŸ§¹ [DEV] Limpiando workspace..."
             cleanWs()
         }
         success {
             echo """
             âœ… ========================================
-            âœ… Pipeline STAGING de ${SERVICE_NAME} completado
+            âœ… Pipeline DEV de ${SERVICE_NAME} completado
             âœ… ========================================
-            ðŸ“¦ Imagen: ${IMAGE_NAME}:staging-${BUILD_TAG}
+            ðŸ“¦ Imagen: ${IMAGE_NAME}:dev-${BUILD_TAG}
             â˜¸ï¸  Namespace: ${K8S_NAMESPACE}
-            ðŸŽ¯ Ambiente: GKE Staging
-            ðŸ§ª Pruebas E2E: Ejecutadas
-            âš¡ Pruebas Performance: Ejecutadas
+            ðŸŽ¯ Ambiente: Minikube (Local)
             âœ… ========================================
             """
         }
         failure {
-            echo "âŒ Pipeline STAGING de ${SERVICE_NAME} fallÃ³"
+            echo "âŒ Pipeline DEV de ${SERVICE_NAME} fallÃ³"
         }
     }
 }
