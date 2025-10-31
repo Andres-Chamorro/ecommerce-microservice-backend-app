@@ -97,8 +97,8 @@ pipeline {
                         # Inicializar gcloud
                         . /root/google-cloud-sdk/path.bash.inc || true
                         
-                        # Autenticar con GCP usando gcloud
-                        gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
+                        # Autenticar Docker con GCP usando access token
+                        gcloud auth print-access-token | docker login -u oauth2accesstoken --password-stdin https://us-central1-docker.pkg.dev
                         
                         # Tag para registry
                         docker tag ${IMAGE_NAME}:dev-${BUILD_TAG} ${REGISTRY_IMAGE}:dev-${BUILD_TAG}
