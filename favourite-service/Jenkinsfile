@@ -84,10 +84,6 @@ pipeline {
                         docker tag ${IMAGE_NAME}:dev-${BUILD_TAG} ${IMAGE_NAME}:dev-latest
                         
                         # Cargar imagen en Minikube usando minikube image load
-                        # Reiniciar containerd si es necesario (por builds largos)
-                        docker exec minikube systemctl restart containerd || true
-                        sleep 5
-                        
                         docker exec minikube sh -c "ctr -n k8s.io images pull docker.io/library/${IMAGE_NAME}:dev-${BUILD_TAG} || true"
                         docker save ${IMAGE_NAME}:dev-${BUILD_TAG} | docker exec -i minikube ctr -n k8s.io images import -
                         
