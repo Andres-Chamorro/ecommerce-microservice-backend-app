@@ -83,13 +83,7 @@ pipeline {
                         docker build -t ${IMAGE_NAME}:dev-${BUILD_TAG} -f shipping-service/Dockerfile .
                         docker tag ${IMAGE_NAME}:dev-${BUILD_TAG} ${IMAGE_NAME}:dev-latest
                         
-                        # Cargar imagen en Minikube usando docker save | docker load
-                        echo "Cargando imagen en Minikube..."
-                        docker save ${IMAGE_NAME}:dev-${BUILD_TAG} ${IMAGE_NAME}:dev-latest | docker exec -i minikube docker load
-                        
-                        # Verificar que la imagen se cargó
-                        echo "Verificando imagen en Minikube:"
-                        docker exec minikube docker images | grep ${IMAGE_NAME}
+                        echo "Imagen construida: ${IMAGE_NAME}:dev-${BUILD_TAG}"
                     """
                 }
             }
@@ -154,10 +148,10 @@ spec:
     spec:
       containers:
       - name: ${SERVICE_NAME}
-        image: ${IMAGE_NAME}:dev-${BUILD_TAG}
+        image: ${REGISTRY_IMAGE}:dev-${BUILD_TAG}
         ports:
         - containerPort: ${SERVICE_PORT}
-        imagePullPolicy: IfNotPresent
+        imagePullPolicy: Always
         env:
         - name: SPRING_PROFILES_ACTIVE
           value: "dev"
