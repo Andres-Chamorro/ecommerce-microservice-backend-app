@@ -1,13 +1,2 @@
-# Excluir todo excepto el JAR
-src/
-.mvn/
-mvnw
-mvnw.cmd
-pom.xml
-*.md
-.gitignore
-Dockerfile*
-Jenkinsfile*
-
-# Solo incluir el JAR compilado
+﻿**/*
 !target/*.jar
