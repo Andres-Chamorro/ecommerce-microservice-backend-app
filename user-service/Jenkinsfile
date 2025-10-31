@@ -87,7 +87,7 @@ pipeline {
                         cd ..
                         
                         # Cargar en Minikube con minikube image load (mÃƒÆ’Ã‚Â¡s rÃƒÆ’Ã‚Â¡pido)
-                        minikube image load \${IMAGE_NAME}:dev-\${BUILD_TAG}
+                        docker save ${IMAGE_NAME}:dev-${BUILD_TAG} | docker exec -i minikube ctr -n k8s.io images import -
                         
                         echo "Imagen construida y cargada en Minikube: \${IMAGE_NAME}:dev-\${BUILD_TAG}"
                     """
