@@ -97,6 +97,14 @@ pipeline {
                         # Inicializar gcloud
                         . /root/google-cloud-sdk/path.bash.inc || true
                         
+                        # Remover credHelpers de Docker config para evitar usar docker-credential-gcloud
+                        mkdir -p ~/.docker
+                        cat > ~/.docker/config.json << 'EOF'
+{
+  "auths": {}
+}
+EOF
+                        
                         # Autenticar Docker con GCP usando access token
                         gcloud auth print-access-token | docker login -u oauth2accesstoken --password-stdin https://us-central1-docker.pkg.dev
                         
