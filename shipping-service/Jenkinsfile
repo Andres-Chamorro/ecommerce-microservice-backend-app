@@ -231,18 +231,10 @@ EOF
                 script {
                     echo " [DEV] Generando reportes de ${SERVICE_NAME}..."
                     
-                    // Publicar cobertura JaCoCo
-                    jacoco(
-                        execPattern: 'shipping-service/target/jacoco.exec',
-                        classPattern: 'shipping-service/target/classes',
-                        sourcePattern: 'shipping-service/src/main/java',
-                        exclusionPattern: '**/*Test*.class'
-                    )
-                    
                     // Archivar artefactos
                     archiveArtifacts artifacts: 'shipping-service/target/*.jar', fingerprint: true, allowEmptyArchive: true
                     
-                    echo " [DEV] Reportes JaCoCo y artefactos archivados"
+                    echo " [DEV] Artefactos archivados"
                 }
             }
         }

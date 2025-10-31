@@ -1,4 +1,4 @@
-pipeline {
+﻿pipeline {
     agent any
     
     environment {
@@ -231,18 +231,10 @@ EOF
                 script {
                     echo " [DEV] Generando reportes de ${SERVICE_NAME}..."
                     
-                    // Publicar cobertura JaCoCo
-                    jacoco(
-                        execPattern: 'user-service/target/jacoco.exec',
-                        classPattern: 'user-service/target/classes',
-                        sourcePattern: 'user-service/src/main/java',
-                        exclusionPattern: '**/*Test*.class'
-                    )
-                    
                     // Archivar artefactos
                     archiveArtifacts artifacts: 'user-service/target/*.jar', fingerprint: true, allowEmptyArchive: true
                     
-                    echo " [DEV] Reportes JaCoCo y artefactos archivados"
+                    echo " [DEV] Artefactos archivados"
                 }
             }
         }
@@ -251,8 +243,6 @@ EOF
     post {
         always {
             echo "ÃƒÆ’Ã‚Â°Ãƒâ€¦Ã‚Â¸Ãƒâ€šÃ‚Â§Ãƒâ€šÃ‚Â¹ [DEV] Limpiando workspace..."
-            archiveArtifacts artifacts: 'reports/*.html, user-service/target/surefire-reports/*.xml, user-service/target/site/jacoco/**/*', allowEmptyArchive: true
-            
             cleanWs()
         }
         success {
