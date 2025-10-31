@@ -1,4 +1,4 @@
-pipeline {
+﻿pipeline {
     agent any
     
     environment {
@@ -79,16 +79,17 @@ pipeline {
                 script {
                     echo "ÃƒÆ’Ã‚Â°Ãƒâ€¦Ã‚Â¸Ãƒâ€šÃ‚ÂÃƒâ€šÃ‚Â³ [DEV] Construyendo imagen Docker de ${SERVICE_NAME}..."
                     sh """
-                        # Construir imagen con Docker desde el directorio del servicio
+                        # Construir directamente en el daemon de Docker de Minikube
                         cd payment-service
+                        
+                        # Usar el Docker daemon de Minikube
+                        eval $(minikube -p minikube docker-env)
+                        
+                        # Construir imagen directamente en Minikube
                         docker build -t ${IMAGE_NAME}:dev-${BUILD_TAG} .
                         docker tag ${IMAGE_NAME}:dev-${BUILD_TAG} ${IMAGE_NAME}:dev-latest
-                        cd ..
                         
-                        # Cargar imagen en Minikube
-                        docker save ${IMAGE_NAME}:dev-${BUILD_TAG} | docker exec -i minikube ctr -n k8s.io images import -
-                        
-                        echo "Imagen construida y cargada en Minikube: ${IMAGE_NAME}:dev-${BUILD_TAG}"
+                        echo "Imagen construida directamente en Minikube: ${IMAGE_NAME}:dev-${BUILD_TAG}"
                     """
                 }
             }
