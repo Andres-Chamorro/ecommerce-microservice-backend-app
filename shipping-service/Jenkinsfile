@@ -1,4 +1,4 @@
-pipeline {
+﻿pipeline {
     agent any
     
     environment {
@@ -80,11 +80,12 @@ pipeline {
                     echo "ÃƒÆ’Ã‚Â°Ãƒâ€¦Ã‚Â¸Ãƒâ€šÃ‚ÂÃƒâ€šÃ‚Â³ [DEV] Construyendo imagen Docker de ${SERVICE_NAME}..."
                     sh """
                         # Construir imagen con Docker
-                        docker build -t ${IMAGE_NAME}:dev-${BUILD_TAG} -f shipping-service/Dockerfile .
+                        cd shipping-service
+                        docker build -t \${IMAGE_NAME}:dev-\${BUILD_TAG} .
                         docker tag ${IMAGE_NAME}:dev-${BUILD_TAG} ${IMAGE_NAME}:dev-latest
-                        
+                        cd ..
+                                                
                         # Cargar imagen en Minikube usando minikube image load
-                        docker exec minikube sh -c "ctr -n k8s.io images pull docker.io/library/${IMAGE_NAME}:dev-${BUILD_TAG} || true"
                         docker save ${IMAGE_NAME}:dev-${BUILD_TAG} | docker exec -i minikube ctr -n k8s.io images import -
                         
                         echo "Imagen construida y cargada en Minikube: ${IMAGE_NAME}:dev-${BUILD_TAG}"
