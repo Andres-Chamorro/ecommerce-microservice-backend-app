@@ -4,7 +4,7 @@ pipeline {
     environment {
         // Java Configuration
         JAVA_HOME = '/usr/lib/jvm/java-17-openjdk-amd64'
-        PATH = "${JAVA_HOME}/bin:${env.PATH}"
+        PATH = "/root/google-cloud-sdk/bin:${JAVA_HOME}/bin:${env.PATH}"
         
         // Service Configuration
         SERVICE_NAME = 'favourite-service'
@@ -94,6 +94,9 @@ pipeline {
                 script {
                     echo "📦 [DEV] Pushing imagen a Artifact Registry..."
                     sh """
+                        # Inicializar gcloud
+                        . /root/google-cloud-sdk/path.bash.inc || true
+                        
                         # Autenticar con GCP usando gcloud
                         gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
                         
