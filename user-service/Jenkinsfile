@@ -1,4 +1,4 @@
-// Updated: 2025-10-31 15:31
+﻿// Updated: 2025-10-31 15:31
 pipeline {
     agent any
     
@@ -80,16 +80,15 @@ pipeline {
                 script {
                     echo "ÃƒÂ°Ã…Â¸Ã‚ÂÃ‚Â³ [DEV] Construyendo imagen Docker de ${SERVICE_NAME}..."
                     sh """
-                        # Construir imagen con Docker
+                        # Construir directamente en el Docker de Minikube
+                        eval \$(minikube -p minikube docker-env)
+                        
                         cd user-service
                         docker build -t \${IMAGE_NAME}:dev-\${BUILD_TAG} .
-                        docker tag ${IMAGE_NAME}:dev-${BUILD_TAG} ${IMAGE_NAME}:dev-latest
+                        docker tag \${IMAGE_NAME}:dev-\${BUILD_TAG} \${IMAGE_NAME}:dev-latest
                         cd ..
-                                                
-                        # Cargar imagen en Minikube usando minikube image load
-                        docker save ${IMAGE_NAME}:dev-${BUILD_TAG} | docker exec -i minikube ctr -n k8s.io images import -
                         
-                        echo "Imagen construida y cargada en Minikube: ${IMAGE_NAME}:dev-${BUILD_TAG}"
+                        echo "Imagen construida directamente en Minikube: \${IMAGE_NAME}:dev-\${BUILD_TAG}"
                     """
                 }
             }
