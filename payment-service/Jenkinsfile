@@ -345,7 +345,7 @@ EOF
         
         <div class="footer">
             <p><strong>Jenkins Pipeline</strong> | Build #${BUILD_NUMBER} | Generated on \$(date '+%Y-%m-%d %H:%M:%S')</p>
-            <p>🔗 <a href="${BUILD_URL}">Ver build en Jenkins</a></p>
+            <p>🔗 <a href="${env.BUILD_URL}">Ver build en Jenkins</a></p>
         </div>
     </div>
 </body>
