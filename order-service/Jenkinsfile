@@ -80,15 +80,16 @@ pipeline {
                 script {
                     echo "ÃƒÂ°Ã…Â¸Ã‚ÂÃ‚Â³ [DEV] Construyendo imagen Docker de ${SERVICE_NAME}..."
                     sh """
-                        # Construir directamente en el Docker de Minikube
-                        eval \$(minikube -p minikube docker-env)
-                        
+                        # Construir imagen
                         cd order-service
                         docker build -t ${IMAGE_NAME}:dev-${BUILD_TAG} .
                         docker tag ${IMAGE_NAME}:dev-${BUILD_TAG} ${IMAGE_NAME}:dev-latest
                         cd ..
                         
-                        echo "Imagen construida directamente en Minikube: ${IMAGE_NAME}:dev-${BUILD_TAG}"
+                        # Cargar en Minikube con minikube image load (más rápido)
+                        minikube image load ${IMAGE_NAME}:dev-${BUILD_TAG}
+                        
+                        echo "Imagen construida y cargada en Minikube: ${IMAGE_NAME}:dev-${BUILD_TAG}"
                     """
                 }
             }
