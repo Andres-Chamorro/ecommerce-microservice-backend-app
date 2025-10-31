@@ -14,8 +14,10 @@ pipeline {
         MAVEN_OPTS = '-Xmx2048m'
         BUILD_TAG = "${env.BUILD_NUMBER}"
         
-        // Docker - Local para Minikube
+        // Docker - Local para Minikube y Registry
         IMAGE_NAME = "${SERVICE_NAME}"
+        DOCKER_REGISTRY = 'us-central1-docker.pkg.dev/ecommerce-microservices-476519/ecommerce-registry'
+        REGISTRY_IMAGE = "${DOCKER_REGISTRY}/${SERVICE_NAME}"
         
         // Minikube Configuration
         K8S_NAMESPACE = 'ecommerce-dev'
@@ -88,6 +90,25 @@ pipeline {
                         # Verificar que la imagen se cargó
                         echo "Verificando imagen en Minikube:"
                         docker exec minikube docker images | grep ${IMAGE_NAME}
+                    """
+                }
+            }
+        }
+        
+        stage('Push to Registry') {
+            steps {
+                script {
+                    echo "📦 [DEV] Pushing imagen a Artifact Registry..."
+                    sh """
+                        # Tag para registry
+                        docker tag ${IMAGE_NAME}:dev-${BUILD_TAG} ${REGISTRY_IMAGE}:dev-${BUILD_TAG}
+                        docker tag ${IMAGE_NAME}:dev-${BUILD_TAG} ${REGISTRY_IMAGE}:dev-latest
+                        
+                        # Push a Artifact Registry
+                        docker push ${REGISTRY_IMAGE}:dev-${BUILD_TAG}
+                        docker push ${REGISTRY_IMAGE}:dev-latest
+                        
+                        echo "Imagen disponible en: ${REGISTRY_IMAGE}:dev-${BUILD_TAG}"
                     """
                 }
             }
