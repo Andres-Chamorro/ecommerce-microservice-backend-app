@@ -89,39 +89,7 @@ pipeline {
             }
         }
         
-        stage('Push to Registry') {
-            steps {
-                script {
-                    echo "📦 [DEV] Pushing imagen a Artifact Registry..."
-                    sh """
-                        # Inicializar gcloud
-                        . /root/google-cloud-sdk/path.bash.inc || true
-                        
-                        # Remover credHelpers de Docker config para evitar usar docker-credential-gcloud
-                        mkdir -p ~/.docker
-                        cat > ~/.docker/config.json << 'EOF'
-{
-  "auths": {}
-}
-EOF
-                        
-                        # Autenticar Docker con GCP usando access token
-                        gcloud auth print-access-token | docker login -u oauth2accesstoken --password-stdin https://us-central1-docker.pkg.dev
-                        
-                        # Tag para registry
-                        docker tag ${IMAGE_NAME}:dev-${BUILD_TAG} ${REGISTRY_IMAGE}:dev-${BUILD_TAG}
-                        docker tag ${IMAGE_NAME}:dev-${BUILD_TAG} ${REGISTRY_IMAGE}:dev-latest
-                        
-                        # Push a Artifact Registry
-                        docker push ${REGISTRY_IMAGE}:dev-${BUILD_TAG}
-                        docker push ${REGISTRY_IMAGE}:dev-latest
-                        
-                        echo "Imagen disponible en: ${REGISTRY_IMAGE}:dev-${BUILD_TAG}"
-                    """
-                }
-            }
-        }
-        
+
         stage('Deploy to Minikube') {
             when {
                 expression { params.SKIP_DEPLOY == false }
