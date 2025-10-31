@@ -83,7 +83,7 @@
                         cd payment-service
                         
                         # Usar el Docker daemon de Minikube
-                        eval $(minikube -p minikube docker-env)
+                        eval \$(minikube -p minikube docker-env)
                         
                         # Construir imagen directamente en Minikube
                         docker build -t ${IMAGE_NAME}:dev-${BUILD_TAG} .
