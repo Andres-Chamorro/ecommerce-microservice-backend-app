@@ -106,6 +106,9 @@ pipeline {
                         # Configurar KUBECONFIG explÃ­citamente
                         export KUBECONFIG=/var/jenkins_home/.kube/config
                         
+                        # Configurar servidor de Minikube
+                        kubectl config set-cluster minikube --server=https://192.168.67.2:8443 --insecure-skip-tls-verify=true
+                        
                         # Cambiar contexto a Minikube
                         kubectl config use-context minikube
                         
