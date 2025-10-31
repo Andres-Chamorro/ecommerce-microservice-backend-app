@@ -94,6 +94,9 @@ pipeline {
                 script {
                     echo "📦 [DEV] Pushing imagen a Artifact Registry..."
                     sh """
+                        # Autenticar con GCP usando gcloud
+                        gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
+                        
                         # Tag para registry
                         docker tag ${IMAGE_NAME}:dev-${BUILD_TAG} ${REGISTRY_IMAGE}:dev-${BUILD_TAG}
                         docker tag ${IMAGE_NAME}:dev-${BUILD_TAG} ${REGISTRY_IMAGE}:dev-latest
