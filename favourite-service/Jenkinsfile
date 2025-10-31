@@ -174,7 +174,12 @@ EOF
                 script {
                     echo "ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã¢â‚¬Å“ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ [DEV] Verificando despliegue de ${SERVICE_NAME}..."
                     
-                    sh """`n                        # Configurar kubectl para Minikube`n                        export KUBECONFIG=/var/jenkins_home/.kube/config`n                        kubectl config set-cluster minikube --server=https://192.168.67.2:8443 --insecure-skip-tls-verify=true`n                        kubectl config use-context minikube`n
+                    sh """
+                        # Configurar kubectl para Minikube
+                        export KUBECONFIG=/var/jenkins_home/.kube/config
+                        kubectl config set-cluster minikube --server=https://192.168.67.2:8443 --insecure-skip-tls-verify=true
+                        kubectl config use-context minikube
+                        
                         echo "ÃƒÆ’Ã‚Â°Ãƒâ€¦Ã‚Â¸ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒâ€¦Ã‚Â  Estado de pods:"
                         kubectl get pods -n ${K8S_NAMESPACE} -l app=${SERVICE_NAME}
                         
