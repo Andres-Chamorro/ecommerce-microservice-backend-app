@@ -63,14 +63,8 @@ pipeline {
             }
             post {
                 always {
-                    script {
-                        try {
-                            junit allowEmptyResults: true, testResults: 'favourite-service/target/surefire-reports/*.xml'
-                        } catch (Exception e) {
-                            echo "WARNING: No se pudieron procesar resultados JUnit: ${e.message}"
-                            echo "Los tests se ejecutaron pero no se generaron reportes visuales"
-                        }
-                    }
+                    archiveArtifacts artifacts: 'favourite-service/target/surefire-reports/**/*.xml, favourite-service/target/surefire-reports/**/*.txt', allowEmptyArchive: true
+                    echo "Reportes de pruebas guardados en artifacts"
                 }
             }
         }
