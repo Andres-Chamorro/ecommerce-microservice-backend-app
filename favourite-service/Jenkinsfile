@@ -97,10 +97,10 @@ pipeline {
                     
                     sh """
                         # Verificar conexion
-                        docker exec minikube kubectl cluster-info
+                        docker exec minikube /var/lib/minikube/binaries/v1.34.0/kubectl cluster-info
                         
                         # Crear namespace si no existe
-                        docker exec minikube kubectl get namespace ${K8S_NAMESPACE} || docker exec minikube kubectl create namespace ${K8S_NAMESPACE}
+                        docker exec minikube /var/lib/minikube/binaries/v1.34.0/kubectl get namespace ${K8S_NAMESPACE} || docker exec minikube /var/lib/minikube/binaries/v1.34.0/kubectl create namespace ${K8S_NAMESPACE}
                         
                         # Crear archivo de deployment temporal
                         cat > /tmp/deployment-${SERVICE_NAME}.yaml <<'EOFYAML'
@@ -145,14 +145,14 @@ EOFYAML
                         
                         # Copiar archivo a Minikube y aplicar
                         docker cp /tmp/deployment-${SERVICE_NAME}.yaml minikube:/tmp/deployment-${SERVICE_NAME}.yaml
-                        docker exec minikube kubectl apply -f /tmp/deployment-${SERVICE_NAME}.yaml
+                        docker exec minikube /var/lib/minikube/binaries/v1.34.0/kubectl apply -f /tmp/deployment-${SERVICE_NAME}.yaml
                         
                         # Limpiar archivos temporales
                         rm -f /tmp/deployment-${SERVICE_NAME}.yaml
                         docker exec minikube rm -f /tmp/deployment-${SERVICE_NAME}.yaml
                         
                         # Esperar a que el deployment este listo
-                        docker exec minikube kubectl rollout status deployment/${SERVICE_NAME} -n ${K8S_NAMESPACE} --timeout=180s || echo "WARNING: ${SERVICE_NAME} no esta listo"
+                        docker exec minikube /var/lib/minikube/binaries/v1.34.0/kubectl rollout status deployment/${SERVICE_NAME} -n ${K8S_NAMESPACE} --timeout=180s || echo "WARNING: ${SERVICE_NAME} no esta listo"
                     """
                 }
             }
@@ -168,12 +168,12 @@ EOFYAML
                     
                     sh """
                         echo "Estado de pods:"
-                        docker exec minikube kubectl get pods -n ${K8S_NAMESPACE} -l app=${SERVICE_NAME}
+                        docker exec minikube /var/lib/minikube/binaries/v1.34.0/kubectl get pods -n ${K8S_NAMESPACE} -l app=${SERVICE_NAME}
                         
                         echo "Estado de servicios:"
-                        docker exec minikube kubectl get svc -n ${K8S_NAMESPACE} ${SERVICE_NAME}
+                        docker exec minikube /var/lib/minikube/binaries/v1.34.0/kubectl get svc -n ${K8S_NAMESPACE} ${SERVICE_NAME}
                         
-                        POD_STATUS=\$(docker exec minikube kubectl get pods -n ${K8S_NAMESPACE} -l app=${SERVICE_NAME} -o jsonpath='{.items[0].status.phase}' 2>/dev/null || echo 'NotFound')
+                        POD_STATUS=\$(docker exec minikube /var/lib/minikube/binaries/v1.34.0/kubectl get pods -n ${K8S_NAMESPACE} -l app=${SERVICE_NAME} -o jsonpath='{.items[0].status.phase}' 2>/dev/null || echo 'NotFound')
                         echo "Estado del pod: \$POD_STATUS"
                         
                         if [ "\$POD_STATUS" = "Running" ]; then
