@@ -1,5 +1,5 @@
 FROM eclipse-temurin:17-jre
 WORKDIR /app
-COPY target/user-service-v0.1.0.jar app.jar
+COPY user-service/target/user-service-v0.1.0.jar app.jar
 EXPOSE 8300
 ENTRYPOINT ["java", "-jar", "app.jar"]
