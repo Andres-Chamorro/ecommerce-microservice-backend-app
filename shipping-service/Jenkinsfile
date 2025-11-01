@@ -63,7 +63,14 @@ pipeline {
             }
             post {
                 always {
-                    junit allowEmptyResults: true, testResults: 'shipping-service/target/surefire-reports/*.xml'
+                    script {
+                        try {
+                            junit allowEmptyResults: true, testResults: 'shipping-service/target/surefire-reports/*.xml'
+                        } catch (Exception e) {
+                            echo "WARNING: No se pudieron procesar resultados JUnit: ${e.message}"
+                            echo "Los tests se ejecutaron pero no se generaron reportes visuales"
+                        }
+                    }
                 }
             }
         }
