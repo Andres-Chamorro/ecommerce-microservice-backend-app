@@ -68,30 +68,6 @@ pipeline {
             }
         }
         
-        stage('Code Coverage Report') {
-            when {
-                expression { params.SKIP_TESTS == false }
-            }
-            steps {
-                script {
-                    echo "[DEV] Generando reporte de cobertura de codigo..."
-                    dir('user-service') {
-                        sh 'mvn jacoco:report || echo "WARNING: No se pudo generar reporte JaCoCo"'
-                    }
-                }
-            }
-            post {
-                always {
-                    jacoco(
-                        execPattern: 'user-service/target/jacoco.exec',
-                        classPattern: 'user-service/target/classes',
-                        sourcePattern: 'user-service/src/main/java',
-                        exclusionPattern: '**/*Test*.class'
-                    )
-                }
-            }
-        }
-        
         stage('Build Docker Image') {
             steps {
                 script {
@@ -225,14 +201,15 @@ EOFYAML
                     }
                 }
             }
-        }        
+        }
+        
         stage('Code Coverage Report') {
             when {
                 expression { params.SKIP_TESTS == false }
             }
             steps {
                 script {
-                    echo "[DEV] Generando reporte de cobertura de codigo..."
+                    echo "[DEV] Generando reporte de cobertura de codigo (unitarias + integracion)..."
                     dir('user-service') {
                         sh 'mvn jacoco:report || echo "WARNING: No se pudo generar reporte JaCoCo"'
                     }
