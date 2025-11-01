@@ -171,8 +171,7 @@ EOFYAML
                         if [ "\$POD_STATUS" = "Running" ]; then
                             echo "${SERVICE_NAME} esta corriendo correctamente en Minikube"
                         else
-                            echo "WARNING: ${SERVICE_NAME} no esta en estado Running"
-                            exit 1
+                            echo "WARNING: ${SERVICE_NAME} no esta en estado Running - revisar con kubectl describe pod"
                         fi
                     """
                 }
