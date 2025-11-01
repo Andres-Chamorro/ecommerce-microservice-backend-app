@@ -68,6 +68,30 @@ pipeline {
             }
         }
         
+        stage('Code Coverage Report') {
+            when {
+                expression { params.SKIP_TESTS == false }
+            }
+            steps {
+                script {
+                    echo "[DEV] Generando reporte de cobertura de codigo..."
+                    dir('shipping-service') {
+                        sh 'mvn jacoco:report || echo "WARNING: No se pudo generar reporte JaCoCo"'
+                    }
+                }
+            }
+            post {
+                always {
+                    jacoco(
+                        execPattern: 'shipping-service/target/jacoco.exec',
+                        classPattern: 'shipping-service/target/classes',
+                        sourcePattern: 'shipping-service/src/main/java',
+                        exclusionPattern: '**/*Test*.class'
+                    )
+                }
+            }
+        }
+        
         stage('Build Docker Image') {
             steps {
                 script {
@@ -201,9 +225,33 @@ EOFYAML
                     }
                 }
             }
+        }        
+        stage('Code Coverage Report') {
+            when {
+                expression { params.SKIP_TESTS == false }
+            }
+            steps {
+                script {
+                    echo "[DEV] Generando reporte de cobertura de codigo..."
+                    dir('shipping-service') {
+                        sh 'mvn jacoco:report || echo "WARNING: No se pudo generar reporte JaCoCo"'
+                    }
+                }
+            }
+            post {
+                always {
+                    jacoco(
+                        execPattern: 'shipping-service/target/jacoco.exec',
+                        classPattern: 'shipping-service/target/classes',
+                        sourcePattern: 'shipping-service/src/main/java',
+                        exclusionPattern: '**/*Test*.class'
+                    )
+                }
+            }
         }
+
     }
-    
+
     post {
         always {
             echo "[DEV] Limpiando workspace..."
