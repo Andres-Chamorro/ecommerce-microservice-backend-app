@@ -102,8 +102,8 @@ pipeline {
                         # Crear namespace si no existe
                         docker exec minikube /var/lib/minikube/binaries/v1.34.0/kubectl --kubeconfig=/etc/kubernetes/admin.conf get namespace ${K8S_NAMESPACE} || docker exec minikube /var/lib/minikube/binaries/v1.34.0/kubectl --kubeconfig=/etc/kubernetes/admin.conf create namespace ${K8S_NAMESPACE}
                         
-                        # Crear archivo de deployment temporal
-                        cat > /tmp/deployment-${SERVICE_NAME}.yaml <<'EOFYAML'
+                        # Aplicar deployment directamente con pipe
+                        cat <<'EOFYAML' | docker exec -i minikube /var/lib/minikube/binaries/v1.34.0/kubectl --kubeconfig=/etc/kubernetes/admin.conf apply -f -
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -142,14 +142,6 @@ spec:
     targetPort: ${SERVICE_PORT}
   type: ClusterIP
 EOFYAML
-                        
-                        # Copiar archivo a Minikube y aplicar
-                        docker cp /tmp/deployment-${SERVICE_NAME}.yaml minikube:/tmp/deployment-${SERVICE_NAME}.yaml
-                        docker exec minikube /var/lib/minikube/binaries/v1.34.0/kubectl --kubeconfig=/etc/kubernetes/admin.conf apply -f /tmp/deployment-${SERVICE_NAME}.yaml
-                        
-                        # Limpiar archivos temporales
-                        rm -f /tmp/deployment-${SERVICE_NAME}.yaml
-                        docker exec minikube rm -f /tmp/deployment-${SERVICE_NAME}.yaml
                         
                         # Esperar a que el deployment este listo
                         docker exec minikube /var/lib/minikube/binaries/v1.34.0/kubectl --kubeconfig=/etc/kubernetes/admin.conf rollout status deployment/${SERVICE_NAME} -n ${K8S_NAMESPACE} --timeout=180s || echo "WARNING: ${SERVICE_NAME} no esta listo"
