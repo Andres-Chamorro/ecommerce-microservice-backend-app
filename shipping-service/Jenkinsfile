@@ -20,14 +20,14 @@ pipeline {
         
         // Build Reference
         BUILD_TAG = "${env.BUILD_NUMBER}"
-        DEV_BUILD_NUMBER = "${env.DEV_BUILD_NUMBER ?: 'latest'}" // Número de build de DEV
+        DEV_BUILD_NUMBER = "${env.DEV_BUILD_NUMBER ?: 'latest'}" // Nï¿½mero de build de DEV
     }
     
     parameters {
         string(
             name: 'DEV_BUILD_NUMBER',
             defaultValue: 'latest',
-            description: 'Número de build de DEV a desplegar (ej: 123) o "latest"'
+            description: 'Nï¿½mero de build de DEV a desplegar (ej: 123) o "latest"'
         )
         booleanParam(
             name: 'SKIP_E2E_TESTS',
@@ -98,7 +98,7 @@ pipeline {
                             kubectl set image deployment/${SERVICE_NAME} ${SERVICE_NAME}=${IMAGE_NAME}:staging-${BUILD_TAG} -n ${K8S_NAMESPACE} || \
                             kubectl apply -f k8s/microservices/${SERVICE_NAME}-deployment.yaml -n ${K8S_NAMESPACE}
                         else
-                            echo "?? No se encontró deployment YAML, creando uno temporal..."
+                            echo "?? No se encontrï¿½ deployment YAML, creando uno temporal..."
                             cat <<EOF | kubectl apply -f -
 apiVersion: apps/v1
 kind: Deployment
@@ -144,12 +144,12 @@ EOF
         stage('Wait for Rollout') {
             steps {
                 script {
-                    echo "? [STAGING]Esperando a que el despliegue esté listo..."
+                    echo "? [STAGING]Esperando a que el despliegue estï¿½ listo..."
                     
                     sh """
                         . /root/google-cloud-sdk/path.bash.inc
                         
-                        kubectl rollout status deployment/${SERVICE_NAME} -n ${K8S_NAMESPACE} --timeout=600s || echo "?? Rollout tomó más tiempo del esperado, continuando..."
+                        kubectl rollout status deployment/${SERVICE_NAME} -n ${K8S_NAMESPACE} --timeout=600s || echo "?? Rollout tomï¿½ mï¿½s tiempo del esperado, continuando..."
                         
                         echo "? Despliegue completado"
                     """
@@ -197,15 +197,15 @@ EOF
                         echo "??Service URL: http://$SERVICE_URL:${SERVICE_PORT}"
                         
                         # Ejecutar pruebas E2E si existen
-                        if [ -d tests/e2e ]; then
+                        if [ -d ../tests/e2e ]; then
                             echo "??Ejecutando pruebas E2E..."
-                            cd tests/e2e
+                            cd ../tests/e2e
                             mvn test -Dtest=*E2ETest -Dservice.url=http://$SERVICE_URL:${SERVICE_PORT} -Dservice.name=${SERVICE_NAME} || echo "?? Algunas pruebas E2E fallaron"
                         else
                             echo "No hay pruebas E2E configuradas"
                         fi
                         
-                        # Limpiar port-forward si se usó
+                        # Limpiar port-forward si se usï¿½
                         if [ -n "$PORT_FORWARD_PID" ]; then
                             kill $PORT_FORWARD_PID 2>/dev/null || true
                         fi
@@ -259,14 +259,14 @@ EOF
                         
                         echo "??Service URL: http://$SERVICE_URL:${SERVICE_PORT}"
                         
-                        if [ -f tests/performance/locustfile.py ]; then
+                        if [ -f ../tests/performance/locustfile.py ]; then
                             echo "??Ejecutando pruebas de rendimiento..."
                             
-                            # Instalar locust si no está instalado
+                            # Instalar locust si no estï¿½ instalado
                             pip3 install locust 2>/dev/null || echo "Locust ya instalado"
                             
                             # Ejecutar Locust en modo headless (sin UI)
-                            cd tests/performance
+                            cd ../tests/performance
                             locust -f locustfile.py --host=http://$SERVICE_URL:${SERVICE_PORT} \
                                 --users 50 --spawn-rate 5 --run-time 2m --headless \
                                 --html=locust-report-${SERVICE_NAME}.html || echo "?? Pruebas de rendimiento completadas con warnings"
@@ -288,7 +288,7 @@ EOF
                             archiveArtifacts artifacts: reportFile, allowEmptyArchive: false
                             echo "? Reporte de rendimiento archivado"
                         } else {
-                            echo "?? No se generó reporte de rendimiento"
+                            echo "?? No se generï¿½ reporte de rendimiento"
                         }
                     }
                 }
@@ -331,9 +331,9 @@ EOF
                         POD_STATUS=\$(kubectl get pods -n ${K8S_NAMESPACE} -l app=${SERVICE_NAME} -o jsonpath='{.items[0].status.phase}' 2>/dev/null || echo 'NotFound')
                         
                         if [ "\$POD_STATUS" = "Running" ]; then
-                            echo "? ${SERVICE_NAME} está corriendo correctamente en GKE Staging"
+                            echo "? ${SERVICE_NAME} estï¿½ corriendo correctamente en GKE Staging"
                         else
-                            echo "?? WARNING: ${SERVICE_NAME} no está en estado Running"
+                            echo "?? WARNING: ${SERVICE_NAME} no estï¿½ en estado Running"
                             exit 1
                         fi
                     """
@@ -361,7 +361,7 @@ EOF
             """
         }
         failure {
-            echo "? Pipeline STAGING de ${SERVICE_NAME} falló"
+            echo "? Pipeline STAGING de ${SERVICE_NAME} fallï¿½"
         }
     }
 }
