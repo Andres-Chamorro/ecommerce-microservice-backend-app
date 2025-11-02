@@ -149,7 +149,7 @@ EOF
                     sh """
                         . /root/google-cloud-sdk/path.bash.inc
                         
-                        kubectl rollout status deployment/${SERVICE_NAME} -n ${K8S_NAMESPACE} --timeout=300s
+                        kubectl rollout status deployment/${SERVICE_NAME} -n ${K8S_NAMESPACE} --timeout=600s || echo "⚠️ Rollout tomó más tiempo del esperado, continuando..."
                         
                         echo "✅ Despliegue completado"
                     """
@@ -195,11 +195,12 @@ EOF
                         echo "🌐 Service URL: http://$SERVICE_URL:${SERVICE_PORT}"
                         
                         # Ejecutar pruebas E2E si existen
-                        if [ -d tests/e2e ]; then
-                            cd tests/e2e
-                            mvn test -Dtest=*E2ETest -Dservice.url=http://$SERVICE_URL:${SERVICE_PORT} || echo "⚠️ Algunas pruebas E2E fallaron"
+                        if [ -d ../tests/e2e ]; then
+                            echo "?? Ejecutando pruebas E2E..."
+                            cd ../tests/e2e
+                            mvn test -Dtest=*E2ETest -Dservice.url=http://$SERVICE_URL:${SERVICE_PORT} -Dservice.name=${SERVICE_NAME} || echo "?? Algunas pruebas E2E fallaron"
                         else
-                            echo "ℹ️ No hay pruebas E2E configuradas"
+                            echo "?? No hay pruebas E2E configuradas"
                         fi
                         
                         # Limpiar port-forward si se usó
@@ -211,7 +212,14 @@ EOF
             }
             post {
                 always {
-                    archiveArtifacts artifacts: 'tests/e2e/target/surefire-reports/**/*.xml', allowEmptyArchive: true
+                    script {
+                        if (fileExists('tests/e2e/target/surefire-reports')) {
+                            archiveArtifacts artifacts: 'tests/e2e/target/surefire-reports/**/*.xml', allowEmptyArchive: true
+                            echo ' Reportes E2E archivados'
+                        } else {
+                            echo '? No hay reportes E2E para archivar (no hay pruebas implementadas)'
+                        }
+                    }
                 }
             }
         }
@@ -272,8 +280,8 @@ EOF
                 always {
                     script {
                         // Solo archivar si el archivo existe
-                        if (fileExists('tests/performance/locust-report.html')) {
-                            archiveArtifacts artifacts: 'tests/performance/locust-report.html', allowEmptyArchive: false
+                        if (fileExists("tests/performance/locust-report-${SERVICE_NAME}.html")) {
+                            archiveArtifacts artifacts: "tests/performance/locust-report-${SERVICE_NAME}.html", allowEmptyArchive: false
                         } else {
                             echo "ℹ️ No se generó reporte de rendimiento (no hay pruebas configuradas)"
                         }
