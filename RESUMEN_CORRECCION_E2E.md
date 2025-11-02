@@ -103,4 +103,21 @@ Si no tienes pruebas E2E implementadas, verás:
 ℹ️ No hay pruebas E2E configuradas
 ```
 
+Si no tienes pruebas de Performance implementadas, verás:
+```
+ℹ️ No hay pruebas de rendimiento configuradas (tests/performance/locustfile.py no existe)
+Saltando pruebas de rendimiento...
+ℹ️ No se generó reporte de rendimiento (no hay pruebas configuradas)
+```
+
 Esto es normal y el pipeline continuará exitosamente.
+
+## 🔧 Correcciones Adicionales - Performance Tests
+
+También se corrigió el stage de Performance Tests:
+
+1. ✅ **JAVA_HOME exportado** (igual que E2E)
+2. ✅ **Espera de IP externa** (hasta 1 minuto)
+3. ✅ **No hace `cd`** - usa ruta completa `tests/performance/locustfile.py`
+4. ✅ **Solo archiva si existe** - usa `fileExists()` antes de archivar
+5. ✅ **Mensajes claros** - indica si no hay pruebas configuradas

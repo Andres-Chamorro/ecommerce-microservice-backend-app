@@ -229,28 +229,55 @@ EOF
                         export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
                         export PATH=$JAVA_HOME/bin:$PATH
                         
-                        # Obtener la URL del servicio
-                        SERVICE_URL=$(kubectl get svc ${SERVICE_NAME} -n ${K8S_NAMESPACE} -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo 'localhost')
+                        # Obtener la URL del servicio (esperar IP externa)
+                        echo "⏳ Obteniendo IP del servicio..."
+                        for i in {1..12}; do
+                            SERVICE_IP=$(kubectl get svc ${SERVICE_NAME} -n ${K8S_NAMESPACE} -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null)
+                            if [ -n "$SERVICE_IP" ]; then
+                                echo "✅ IP obtenida: $SERVICE_IP"
+                                break
+                            fi
+                            sleep 5
+                        done
+                        
+                        if [ -z "$SERVICE_IP" ]; then
+                            SERVICE_URL="localhost"
+                            echo "⚠️ Usando localhost como fallback"
+                        else
+                            SERVICE_URL="$SERVICE_IP"
+                        fi
+                        
+                        echo "🌐 Service URL: http://$SERVICE_URL:${SERVICE_PORT}"
                         
                         if [ -f tests/performance/locustfile.py ]; then
-                            cd tests/performance
+                            echo "📊 Ejecutando pruebas de rendimiento..."
                             
                             # Instalar locust si no está instalado
-                            pip3 install locust || echo "Locust ya instalado"
+                            pip3 install locust 2>/dev/null || echo "Locust ya instalado"
                             
                             # Ejecutar Locust en modo headless (sin UI)
-                            locust -f locustfile.py --host=http://$SERVICE_URL:${SERVICE_PORT} \
+                            locust -f tests/performance/locustfile.py --host=http://$SERVICE_URL:${SERVICE_PORT} \
                                 --users 50 --spawn-rate 5 --run-time 2m --headless \
-                                --html=locust-report.html || echo "⚠️ Pruebas de rendimiento completadas con warnings"
+                                --html=tests/performance/locust-report.html || echo "⚠️ Pruebas de rendimiento completadas con warnings"
+                            
+                            echo "✅ Reporte generado en tests/performance/locust-report.html"
                         else
-                            echo "ℹ️ No hay pruebas de rendimiento configuradas"
+                            echo "ℹ️ No hay pruebas de rendimiento configuradas (tests/performance/locustfile.py no existe)"
+                            echo "Saltando pruebas de rendimiento..."
                         fi
                     '''
                 }
             }
             post {
                 always {
-                    archiveArtifacts artifacts: 'tests/performance/locust-report.html', allowEmptyArchive: true
+                    script {
+                        // Solo archivar si el archivo existe
+                        if (fileExists('tests/performance/locust-report.html')) {
+                            archiveArtifacts artifacts: 'tests/performance/locust-report.html', allowEmptyArchive: false
+                        } else {
+                            echo "ℹ️ No se generó reporte de rendimiento (no hay pruebas configuradas)"
+                        }
+                    }
                 }
             }
         }
