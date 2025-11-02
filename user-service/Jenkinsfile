@@ -171,15 +171,17 @@ EOF
                         export PATH=$JAVA_HOME/bin:$PATH
                         
                         # Obtener la URL del servicio (esperar hasta 2 minutos por la IP externa)
-                        echo "⏳ Esperando IP externa del LoadBalancer..."
-                        for i in {1..24}; do
+                        echo "Esperando IP externa del LoadBalancer..."
+                        i=1
+                        while [ $i -le 24 ]; do
                             SERVICE_IP=$(kubectl get svc ${SERVICE_NAME} -n ${K8S_NAMESPACE} -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null)
                             if [ -n "$SERVICE_IP" ]; then
-                                echo "✅ IP externa obtenida: $SERVICE_IP"
+                                echo "IP externa obtenida: $SERVICE_IP"
                                 break
                             fi
                             echo "Intento $i/24: Esperando IP externa..."
                             sleep 5
+                            i=$((i + 1))
                         done
                         
                         if [ -z "$SERVICE_IP" ]; then
@@ -195,12 +197,12 @@ EOF
                         echo "🌐 Service URL: http://$SERVICE_URL:${SERVICE_PORT}"
                         
                         # Ejecutar pruebas E2E si existen
-                        if [ -d ../tests/e2e ]; then
-                            echo "?? Ejecutando pruebas E2E..."
-                            cd ../tests/e2e
-                            mvn test -Dtest=*E2ETest -Dservice.url=http://$SERVICE_URL:${SERVICE_PORT} -Dservice.name=${SERVICE_NAME} || echo "?? Algunas pruebas E2E fallaron"
+                        if [ -d tests/e2e ]; then
+                            echo "Ejecutando pruebas E2E..."
+                            cd tests/e2e
+                            mvn test -Dtest=*E2ETest -Dservice.url=http://$SERVICE_URL:${SERVICE_PORT} -Dservice.name=${SERVICE_NAME} || echo "Algunas pruebas E2E fallaron"
                         else
-                            echo "?? No hay pruebas E2E configuradas"
+                            echo "No hay pruebas E2E configuradas"
                         fi
                         
                         # Limpiar port-forward si se usó

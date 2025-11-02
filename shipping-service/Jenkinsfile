@@ -1,4 +1,4 @@
-﻿pipeline {
+pipeline {
     agent any
     
     environment {
@@ -20,14 +20,14 @@
         
         // Build Reference
         BUILD_TAG = "${env.BUILD_NUMBER}"
-        DEV_BUILD_NUMBER = "${env.DEV_BUILD_NUMBER ?: 'latest'}" // Número de build de DEV
+        DEV_BUILD_NUMBER = "${env.DEV_BUILD_NUMBER ?: 'latest'}" // N�mero de build de DEV
     }
     
     parameters {
         string(
             name: 'DEV_BUILD_NUMBER',
             defaultValue: 'latest',
-            description: 'Número de build de DEV a desplegar (ej: 123) o "latest"'
+            description: 'N�mero de build de DEV a desplegar (ej: 123) o "latest"'
         )
         booleanParam(
             name: 'SKIP_E2E_TESTS',
@@ -44,7 +44,7 @@
     stages {
         stage('Checkout') {
             steps {
-                echo "🔄 [STAGING] Clonando repositorio de ${SERVICE_NAME}..."
+                echo "?? [STAGING] Clonando repositorio de ${SERVICE_NAME}..."
                 checkout scm
             }
         }
@@ -52,7 +52,7 @@
         stage('Pull Image from Dev') {
             steps {
                 script {
-                    echo "📥 [STAGING] Obteniendo imagen de DEV..."
+                    echo "?? [STAGING] Obteniendo imagen de DEV..."
                     def devTag = params.DEV_BUILD_NUMBER == 'latest' ? 'dev-latest' : "dev-${params.DEV_BUILD_NUMBER}"
                     
                     sh """
@@ -66,7 +66,7 @@
         stage('Retag Image') {
             steps {
                 script {
-                    echo "🏷️ [STAGING] Re-etiquetando imagen para staging..."
+                    echo "??? [STAGING] Re-etiquetando imagen para staging..."
                     def devTag = params.DEV_BUILD_NUMBER == 'latest' ? 'dev-latest' : "dev-${params.DEV_BUILD_NUMBER}"
                     
                     sh """
@@ -84,7 +84,7 @@
         stage('Deploy to GKE Staging') {
             steps {
                 script {
-                    echo "☸️ [STAGING] Desplegando ${SERVICE_NAME} en GKE Staging..."
+                    echo "?? [STAGING] Desplegando ${SERVICE_NAME} en GKE Staging..."
                     
                     sh """
                         . /root/google-cloud-sdk/path.bash.inc
@@ -98,7 +98,7 @@
                             kubectl set image deployment/${SERVICE_NAME} ${SERVICE_NAME}=${IMAGE_NAME}:staging-${BUILD_TAG} -n ${K8S_NAMESPACE} || \
                             kubectl apply -f k8s/microservices/${SERVICE_NAME}-deployment.yaml -n ${K8S_NAMESPACE}
                         else
-                            echo "⚠️ No se encontró deployment YAML, creando uno temporal..."
+                            echo "?? No se encontr� deployment YAML, creando uno temporal..."
                             cat <<EOF | kubectl apply -f -
 apiVersion: apps/v1
 kind: Deployment
@@ -144,14 +144,14 @@ EOF
         stage('Wait for Rollout') {
             steps {
                 script {
-                    echo "⏳ [STAGING] Esperando a que el despliegue esté listo..."
+                    echo "? [STAGING]Esperando a que el despliegue est� listo..."
                     
                     sh """
                         . /root/google-cloud-sdk/path.bash.inc
                         
-                        kubectl rollout status deployment/${SERVICE_NAME} -n ${K8S_NAMESPACE} --timeout=600s || echo "⚠️ Rollout tomó más tiempo del esperado, continuando..."
+                        kubectl rollout status deployment/${SERVICE_NAME} -n ${K8S_NAMESPACE} --timeout=600s || echo "?? Rollout tom� m�s tiempo del esperado, continuando..."
                         
-                        echo "✅ Despliegue completado"
+                        echo "? Despliegue completado"
                     """
                 }
             }
@@ -163,7 +163,7 @@ EOF
             }
             steps {
                 script {
-                    echo "🧪 [STAGING] Ejecutando pruebas E2E..."
+                    echo "?? [STAGING]Ejecutando pruebas E2E..."
                     
                     sh '''
                         . /root/google-cloud-sdk/path.bash.inc
@@ -171,19 +171,21 @@ EOF
                         export PATH=$JAVA_HOME/bin:$PATH
                         
                         # Obtener la URL del servicio (esperar hasta 2 minutos por la IP externa)
-                        echo "⏳ Esperando IP externa del LoadBalancer..."
-                        for i in {1..24}; do
+                        echo "?Esperando IP externa del LoadBalancer..."
+                        i=1
+                        while [ $i -le 24 ]; do
                             SERVICE_IP=$(kubectl get svc ${SERVICE_NAME} -n ${K8S_NAMESPACE} -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null)
                             if [ -n "$SERVICE_IP" ]; then
-                                echo "✅ IP externa obtenida: $SERVICE_IP"
+                                echo "?IP externa obtenida: $SERVICE_IP"
                                 break
                             fi
-                            echo "Intento $i/24: Esperando IP externa..."
+                            echo "Intento $i/24:Esperando IP externa..."
                             sleep 5
+                            i=$((i + 1))
                         done
                         
                         if [ -z "$SERVICE_IP" ]; then
-                            echo "⚠️ No se pudo obtener IP externa, usando port-forward como fallback"
+                            echo "??No se pudo obtener IP externa, usando port-forward como fallback"
                             kubectl port-forward -n ${K8S_NAMESPACE} svc/${SERVICE_NAME} ${SERVICE_PORT}:${SERVICE_PORT} &
                             PORT_FORWARD_PID=$!
                             sleep 5
@@ -192,18 +194,18 @@ EOF
                             SERVICE_URL="$SERVICE_IP"
                         fi
                         
-                        echo "🌐 Service URL: http://$SERVICE_URL:${SERVICE_PORT}"
+                        echo "??Service URL: http://$SERVICE_URL:${SERVICE_PORT}"
                         
                         # Ejecutar pruebas E2E si existen
-                        if [ -d ../tests/e2e ]; then
-                            echo "🧪 Ejecutando pruebas E2E..."
-                            cd ../tests/e2e
-                            mvn test -Dtest=*E2ETest -Dservice.url=http://$SERVICE_URL:${SERVICE_PORT} -Dservice.name=${SERVICE_NAME} || echo "⚠️ Algunas pruebas E2E fallaron"
+                        if [ -d tests/e2e ]; then
+                            echo "??Ejecutando pruebas E2E..."
+                            cd tests/e2e
+                            mvn test -Dtest=*E2ETest -Dservice.url=http://$SERVICE_URL:${SERVICE_PORT} -Dservice.name=${SERVICE_NAME} || echo "?? Algunas pruebas E2E fallaron"
                         else
-                            echo "ℹ️ No hay pruebas E2E configuradas"
+                            echo "No hay pruebas E2E configuradas"
                         fi
                         
-                        # Limpiar port-forward si se usó
+                        # Limpiar port-forward si se us�
                         if [ -n "$PORT_FORWARD_PID" ]; then
                             kill $PORT_FORWARD_PID 2>/dev/null || true
                         fi
@@ -215,9 +217,9 @@ EOF
                     script {
                         if (fileExists('tests/e2e/target/surefire-reports')) {
                             archiveArtifacts artifacts: 'tests/e2e/target/surefire-reports/**/*.xml', allowEmptyArchive: true
-                            echo '✅ Reportes E2E archivados'
+                            echo '? Reportes E2E archivados'
                         } else {
-                            echo 'ℹ️ No hay reportes E2E para archivar'
+                            echo 'No hay reportes E2E para archivar'
                         }
                     }
                 }
@@ -230,7 +232,7 @@ EOF
             }
             steps {
                 script {
-                    echo "⚡ [STAGING] Ejecutando pruebas de rendimiento con Locust..."
+                    echo "? [STAGING]Ejecutando pruebas de rendimiento con Locust..."
                     
                     sh '''
                         . /root/google-cloud-sdk/path.bash.inc
@@ -238,11 +240,11 @@ EOF
                         export PATH=$JAVA_HOME/bin:$PATH
                         
                         # Obtener la URL del servicio (esperar IP externa)
-                        echo "⏳ Obteniendo IP del servicio..."
+                        echo "? Obteniendo IP del servicio..."
                         for i in {1..12}; do
                             SERVICE_IP=$(kubectl get svc ${SERVICE_NAME} -n ${K8S_NAMESPACE} -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null)
                             if [ -n "$SERVICE_IP" ]; then
-                                echo "✅ IP obtenida: $SERVICE_IP"
+                                echo "? IP obtenida: $SERVICE_IP"
                                 break
                             fi
                             sleep 5
@@ -250,28 +252,28 @@ EOF
                         
                         if [ -z "$SERVICE_IP" ]; then
                             SERVICE_URL="localhost"
-                            echo "⚠️ Usando localhost como fallback"
+                            echo "?? Usando localhost como fallback"
                         else
                             SERVICE_URL="$SERVICE_IP"
                         fi
                         
-                        echo "🌐 Service URL: http://$SERVICE_URL:${SERVICE_PORT}"
+                        echo "??Service URL: http://$SERVICE_URL:${SERVICE_PORT}"
                         
-                        if [ -f ../tests/performance/locustfile.py ]; then
-                            echo "📊 Ejecutando pruebas de rendimiento..."
+                        if [ -f tests/performance/locustfile.py ]; then
+                            echo "??Ejecutando pruebas de rendimiento..."
                             
-                            # Instalar locust si no está instalado
+                            # Instalar locust si no est� instalado
                             pip3 install locust 2>/dev/null || echo "Locust ya instalado"
                             
                             # Ejecutar Locust en modo headless (sin UI)
-                            cd ../tests/performance
+                            cd tests/performance
                             locust -f locustfile.py --host=http://$SERVICE_URL:${SERVICE_PORT} \
                                 --users 50 --spawn-rate 5 --run-time 2m --headless \
-                                --html=locust-report-${SERVICE_NAME}.html || echo "⚠️ Pruebas de rendimiento completadas con warnings"
+                                --html=locust-report-${SERVICE_NAME}.html || echo "?? Pruebas de rendimiento completadas con warnings"
                             
-                            echo "✅ Reporte generado en tests/performance/locust-report-${SERVICE_NAME}.html"
+                            echo "?Reporte generado en tests/performance/locust-report-${SERVICE_NAME}.html"
                         else
-                            echo "ℹ️ No hay pruebas de rendimiento configuradas"
+                            echo "No hay pruebas de rendimiento configuradas"
                             echo "Saltando pruebas de rendimiento..."
                         fi
                     '''
@@ -284,9 +286,9 @@ EOF
                         def reportFile = "tests/performance/locust-report-${SERVICE_NAME}.html"
                         if (fileExists(reportFile)) {
                             archiveArtifacts artifacts: reportFile, allowEmptyArchive: false
-                            echo "✅ Reporte de rendimiento archivado"
+                            echo "? Reporte de rendimiento archivado"
                         } else {
-                            echo "ℹ️ No se generó reporte de rendimiento"
+                            echo "?? No se gener� reporte de rendimiento"
                         }
                     }
                 }
@@ -296,7 +298,7 @@ EOF
         stage('Generate Test Report') {
             steps {
                 script {
-                    echo "📊 [STAGING] Generando reporte de pruebas..."
+                    echo "?? [STAGING] Generando reporte de pruebas..."
                     
                     sh """
                         echo "==================================="
@@ -315,23 +317,23 @@ EOF
         stage('Verify Health Checks') {
             steps {
                 script {
-                    echo "🏥 [STAGING] Verificando health checks..."
+                    echo "?? [STAGING] Verificando health checks..."
                     
                     sh """
                         . /root/google-cloud-sdk/path.bash.inc
                         
-                        echo "📊 Estado de pods:"
+                        echo "?? Estado de pods:"
                         kubectl get pods -n ${K8S_NAMESPACE} -l app=${SERVICE_NAME}
                         
-                        echo "📊 Estado de servicios:"
+                        echo "?? Estado de servicios:"
                         kubectl get svc -n ${K8S_NAMESPACE} ${SERVICE_NAME}
                         
                         POD_STATUS=\$(kubectl get pods -n ${K8S_NAMESPACE} -l app=${SERVICE_NAME} -o jsonpath='{.items[0].status.phase}' 2>/dev/null || echo 'NotFound')
                         
                         if [ "\$POD_STATUS" = "Running" ]; then
-                            echo "✅ ${SERVICE_NAME} está corriendo correctamente en GKE Staging"
+                            echo "? ${SERVICE_NAME} est� corriendo correctamente en GKE Staging"
                         else
-                            echo "⚠️ WARNING: ${SERVICE_NAME} no está en estado Running"
+                            echo "?? WARNING: ${SERVICE_NAME} no est� en estado Running"
                             exit 1
                         fi
                     """
@@ -342,24 +344,24 @@ EOF
     
     post {
         always {
-            echo "🧹 [STAGING] Limpiando workspace..."
+            echo "?? [STAGING] Limpiando workspace..."
             cleanWs()
         }
         success {
             echo """
-            ✅ ========================================
-            ✅ Pipeline STAGING de ${SERVICE_NAME} completado
-            ✅ ========================================
-            📦 Imagen: ${IMAGE_NAME}:staging-${BUILD_TAG}
-            ☸️  Namespace: ${K8S_NAMESPACE}
-            🎯 Ambiente: GKE Staging
-            🧪 Pruebas E2E: Ejecutadas
-            ⚡ Pruebas Performance: Ejecutadas
-            ✅ ========================================
+            ? ========================================
+            ? Pipeline STAGING de ${SERVICE_NAME} completado
+            ? ========================================
+            ?? Imagen: ${IMAGE_NAME}:staging-${BUILD_TAG}
+            ??  Namespace: ${K8S_NAMESPACE}
+            ?? Ambiente: GKE Staging
+            ?? Pruebas E2E: Ejecutadas
+            ? Pruebas Performance: Ejecutadas
+            ? ========================================
             """
         }
         failure {
-            echo "❌ Pipeline STAGING de ${SERVICE_NAME} falló"
+            echo "? Pipeline STAGING de ${SERVICE_NAME} fall�"
         }
     }
 }

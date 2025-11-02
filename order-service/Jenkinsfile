@@ -144,7 +144,7 @@ EOF
         stage('Wait for Rollout') {
             steps {
                 script {
-                    echo "⏳ [STAGING] Esperando a que el despliegue esté listo..."
+                    echo "⏳ [STAGING]Esperando a que el despliegue esté listo..."
                     
                     sh """
                         . /root/google-cloud-sdk/path.bash.inc
@@ -163,7 +163,7 @@ EOF
             }
             steps {
                 script {
-                    echo "🧪 [STAGING] Ejecutando pruebas E2E..."
+                    echo "🧪 [STAGING]Ejecutando pruebas E2E..."
                     
                     sh '''
                         . /root/google-cloud-sdk/path.bash.inc
@@ -171,19 +171,21 @@ EOF
                         export PATH=$JAVA_HOME/bin:$PATH
                         
                         # Obtener la URL del servicio (esperar hasta 2 minutos por la IP externa)
-                        echo "⏳ Esperando IP externa del LoadBalancer..."
-                        for i in {1..24}; do
+                        echo "⏳Esperando IP externa del LoadBalancer..."
+                        i=1
+                        while [ $i -le 24 ]; do
                             SERVICE_IP=$(kubectl get svc ${SERVICE_NAME} -n ${K8S_NAMESPACE} -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null)
                             if [ -n "$SERVICE_IP" ]; then
-                                echo "✅ IP externa obtenida: $SERVICE_IP"
+                                echo "✅IP externa obtenida: $SERVICE_IP"
                                 break
                             fi
-                            echo "Intento $i/24: Esperando IP externa..."
+                            echo "Intento $i/24:Esperando IP externa..."
                             sleep 5
+                            i=$((i + 1))
                         done
                         
                         if [ -z "$SERVICE_IP" ]; then
-                            echo "⚠️ No se pudo obtener IP externa, usando port-forward como fallback"
+                            echo "⚠️No se pudo obtener IP externa, usando port-forward como fallback"
                             kubectl port-forward -n ${K8S_NAMESPACE} svc/${SERVICE_NAME} ${SERVICE_PORT}:${SERVICE_PORT} &
                             PORT_FORWARD_PID=$!
                             sleep 5
@@ -192,15 +194,15 @@ EOF
                             SERVICE_URL="$SERVICE_IP"
                         fi
                         
-                        echo "🌐 Service URL: http://$SERVICE_URL:${SERVICE_PORT}"
+                        echo "🌐Service URL: http://$SERVICE_URL:${SERVICE_PORT}"
                         
                         # Ejecutar pruebas E2E si existen
-                        if [ -d ../tests/e2e ]; then
-                            echo "?? Ejecutando pruebas E2E..."
-                            cd ../tests/e2e
-                            mvn test -Dtest=*E2ETest -Dservice.url=http://$SERVICE_URL:${SERVICE_PORT} -Dservice.name=${SERVICE_NAME} || echo "?? Algunas pruebas E2E fallaron"
+                        if [ -d tests/e2e ]; then
+                            echo "??Ejecutando pruebas E2E..."
+                            cd tests/e2e
+                            mvn test -Dtest=*E2ETest -Dservice.url=http://$SERVICE_URL:${SERVICE_PORT} -Dservice.name=${SERVICE_NAME} || echo "Algunas pruebas E2E fallaron"
                         else
-                            echo "?? No hay pruebas E2E configuradas"
+                            echo "No hay pruebas E2E configuradas"
                         fi
                         
                         # Limpiar port-forward si se usó
@@ -230,7 +232,7 @@ EOF
             }
             steps {
                 script {
-                    echo "⚡ [STAGING] Ejecutando pruebas de rendimiento con Locust..."
+                    echo "⚡ [STAGING]Ejecutando pruebas de rendimiento con Locust..."
                     
                     sh '''
                         . /root/google-cloud-sdk/path.bash.inc
@@ -255,10 +257,10 @@ EOF
                             SERVICE_URL="$SERVICE_IP"
                         fi
                         
-                        echo "🌐 Service URL: http://$SERVICE_URL:${SERVICE_PORT}"
+                        echo "🌐Service URL: http://$SERVICE_URL:${SERVICE_PORT}"
                         
                         if [ -f tests/performance/locustfile.py ]; then
-                            echo "📊 Ejecutando pruebas de rendimiento..."
+                            echo "📊Ejecutando pruebas de rendimiento..."
                             
                             # Instalar locust si no está instalado
                             pip3 install locust 2>/dev/null || echo "Locust ya instalado"
@@ -268,7 +270,7 @@ EOF
                                 --users 50 --spawn-rate 5 --run-time 2m --headless \
                                 --html=tests/performance/locust-report.html || echo "⚠️ Pruebas de rendimiento completadas con warnings"
                             
-                            echo "✅ Reporte generado en tests/performance/locust-report.html"
+                            echo "✅Reporte generado en tests/performance/locust-report.html"
                         else
                             echo "ℹ️ No hay pruebas de rendimiento configuradas (tests/performance/locustfile.py no existe)"
                             echo "Saltando pruebas de rendimiento..."
