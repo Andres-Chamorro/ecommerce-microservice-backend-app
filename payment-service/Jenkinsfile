@@ -200,9 +200,9 @@ EOF
                         if [ -d tests/e2e ]; then
                             echo "Ejecutando pruebas E2E..."
                             cd tests/e2e
-                            export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
-                            export PATH=$JAVA_HOME/bin:$PATH
-                            mvn test -Dtest=*E2ETest -Dservice.url=http://$SERVICE_URL:${SERVICE_PORT} -Dservice.name=${SERVICE_NAME} || echo "Algunas pruebas E2E fallaron"
+                            JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+                            PATH=$JAVA_HOME/bin:$PATH
+                            /usr/bin/mvn test -Dtest=*E2ETest -Dservice.url=http://$SERVICE_URL:${SERVICE_PORT} -Dservice.name=${SERVICE_NAME} || echo "Algunas pruebas E2E fallaron"
                         else
                             echo "No hay pruebas E2E configuradas"
                         fi
