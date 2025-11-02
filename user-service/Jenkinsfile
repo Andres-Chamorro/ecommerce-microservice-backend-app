@@ -197,9 +197,11 @@ EOF
                         echo "🌐 Service URL: http://$SERVICE_URL:${SERVICE_PORT}"
                         
                         # Ejecutar pruebas E2E si existen
-                        if [ -d ../tests/e2e ]; then
+                        if [ -d tests/e2e ]; then
                             echo "Ejecutando pruebas E2E..."
-                            cd ../tests/e2e
+                            cd tests/e2e
+                            export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+                            export PATH=$JAVA_HOME/bin:$PATH
                             mvn test -Dtest=*E2ETest -Dservice.url=http://$SERVICE_URL:${SERVICE_PORT} -Dservice.name=${SERVICE_NAME} || echo "Algunas pruebas E2E fallaron"
                         else
                             echo "No hay pruebas E2E configuradas"
@@ -259,15 +261,17 @@ EOF
                         
                         echo "🌐 Service URL: http://$SERVICE_URL:${SERVICE_PORT}"
                         
-                        if [ -f ../tests/performance/locustfile.py ]; then
+                        if [ -f tests/performance/locustfile.py ]; then
                             echo "📊 Ejecutando pruebas de rendimiento..."
                             
                             # Instalar locust si no está instalado
-                            pip3 install locust 2>/dev/null || echo "Locust ya instalado"
+                            pip3 install --user locust || echo "Error instalando Locust"
                             
                             # Ejecutar Locust en modo headless (sin UI)
-                            cd ../tests/performance
-                            locust -f locustfile.py --host=http://$SERVICE_URL:${SERVICE_PORT} \
+                            cd tests/performance
+                            export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+                            export PATH=$JAVA_HOME/bin:$PATH
+                            python3 -m locust -f locustfile.py --host=http://$SERVICE_URL:${SERVICE_PORT} \
                                 --users 50 --spawn-rate 5 --run-time 2m --headless \
                                 --html=locust-report-${SERVICE_NAME}.html || echo "⚠️ Pruebas de rendimiento completadas con warnings"
                             
