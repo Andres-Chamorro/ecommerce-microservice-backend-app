@@ -65,7 +65,7 @@ metadata:
   labels:
     app: favourite-service
 spec:
-  type: ClusterIP
+  type: LoadBalancer  # IP externa para pruebas E2E
   ports:
   - port: 8800
     targetPort: 8800

@@ -1,4 +1,4 @@
-pipeline {
+﻿pipeline {
     agent any
     
     environment {
@@ -12,7 +12,7 @@ pipeline {
         
         // Service Configuration
         SERVICE_NAME = 'shipping-service'
-        SERVICE_PORT = '8200'
+        SERVICE_PORT = '8600'
         
         // Docker Registry
         DOCKER_REGISTRY = 'us-central1-docker.pkg.dev/ecommerce-microservices-476519/ecommerce-registry' // Cambiar si usas Docker Hub o GCR
@@ -165,21 +165,48 @@ EOF
                 script {
                     echo "🧪 [STAGING] Ejecutando pruebas E2E..."
                     
-                    sh """
+                    sh '''
                         . /root/google-cloud-sdk/path.bash.inc
+                        export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+                        export PATH=$JAVA_HOME/bin:$PATH
                         
-                        # Obtener la URL del servicio
-                        SERVICE_URL=\$(kubectl get svc ${SERVICE_NAME} -n ${K8S_NAMESPACE} -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo 'localhost')
-                        echo "Service URL: \$SERVICE_URL:${SERVICE_PORT}"
+                        # Obtener la URL del servicio (esperar hasta 2 minutos por la IP externa)
+                        echo "⏳ Esperando IP externa del LoadBalancer..."
+                        for i in {1..24}; do
+                            SERVICE_IP=$(kubectl get svc ${SERVICE_NAME} -n ${K8S_NAMESPACE} -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null)
+                            if [ -n "$SERVICE_IP" ]; then
+                                echo "✅ IP externa obtenida: $SERVICE_IP"
+                                break
+                            fi
+                            echo "Intento $i/24: Esperando IP externa..."
+                            sleep 5
+                        done
+                        
+                        if [ -z "$SERVICE_IP" ]; then
+                            echo "⚠️ No se pudo obtener IP externa, usando port-forward como fallback"
+                            kubectl port-forward -n ${K8S_NAMESPACE} svc/${SERVICE_NAME} ${SERVICE_PORT}:${SERVICE_PORT} &
+                            PORT_FORWARD_PID=$!
+                            sleep 5
+                            SERVICE_URL="localhost"
+                        else
+                            SERVICE_URL="$SERVICE_IP"
+                        fi
+                        
+                        echo "🌐 Service URL: http://$SERVICE_URL:${SERVICE_PORT}"
                         
                         # Ejecutar pruebas E2E si existen
                         if [ -d tests/e2e ]; then
                             cd tests/e2e
-                            mvn test -Dtest=*E2ETest -Dservice.url=http://\$SERVICE_URL:${SERVICE_PORT} || echo "⚠️ Algunas pruebas E2E fallaron"
+                            mvn test -Dtest=*E2ETest -Dservice.url=http://$SERVICE_URL:${SERVICE_PORT} || echo "⚠️ Algunas pruebas E2E fallaron"
                         else
                             echo "ℹ️ No hay pruebas E2E configuradas"
                         fi
-                    """
+                        
+                        # Limpiar port-forward si se usó
+                        if [ -n "$PORT_FORWARD_PID" ]; then
+                            kill $PORT_FORWARD_PID 2>/dev/null || true
+                        fi
+                    '''
                 }
             }
             post {
@@ -197,11 +224,13 @@ EOF
                 script {
                     echo "⚡ [STAGING] Ejecutando pruebas de rendimiento con Locust..."
                     
-                    sh """
+                    sh '''
                         . /root/google-cloud-sdk/path.bash.inc
+                        export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+                        export PATH=$JAVA_HOME/bin:$PATH
                         
                         # Obtener la URL del servicio
-                        SERVICE_URL=\$(kubectl get svc ${SERVICE_NAME} -n ${K8S_NAMESPACE} -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo 'localhost')
+                        SERVICE_URL=$(kubectl get svc ${SERVICE_NAME} -n ${K8S_NAMESPACE} -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo 'localhost')
                         
                         if [ -f tests/performance/locustfile.py ]; then
                             cd tests/performance
@@ -210,13 +239,13 @@ EOF
                             pip3 install locust || echo "Locust ya instalado"
                             
                             # Ejecutar Locust en modo headless (sin UI)
-                            locust -f locustfile.py --host=http://\$SERVICE_URL:${SERVICE_PORT} \\
-                                --users 50 --spawn-rate 5 --run-time 2m --headless \\
+                            locust -f locustfile.py --host=http://$SERVICE_URL:${SERVICE_PORT} \
+                                --users 50 --spawn-rate 5 --run-time 2m --headless \
                                 --html=locust-report.html || echo "⚠️ Pruebas de rendimiento completadas con warnings"
                         else
                             echo "ℹ️ No hay pruebas de rendimiento configuradas"
                         fi
-                    """
+                    '''
                 }
             }
             post {
