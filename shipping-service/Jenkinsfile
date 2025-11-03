@@ -1,4 +1,4 @@
-pipeline {
+﻿pipeline {
     agent any
     
     environment {
@@ -167,8 +167,6 @@ EOF
                     
                     sh '''
                         . /root/google-cloud-sdk/path.bash.inc
-                        export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
-                        export PATH=$JAVA_HOME/bin:$PATH
                         
                         # Obtener la URL del servicio (esperar hasta 2 minutos por la IP externa)
                         echo "?Esperando IP externa del LoadBalancer..."
@@ -194,23 +192,35 @@ EOF
                             SERVICE_URL="$SERVICE_IP"
                         fi
                         
-                        echo "??Service URL: http://$SERVICE_URL:${SERVICE_PORT}"
+                        echo "🌐 Service URL: http://$SERVICE_URL:${SERVICE_PORT}"
                         
-                        # Ejecutar pruebas E2E si existen
-                        if [ -d tests/e2e ]; then
-                            echo "??Ejecutando pruebas E2E..."
-                            cd tests/e2e
-                            JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
-                            PATH=$JAVA_HOME/bin:$PATH
-                            /usr/bin/mvn test -Dtest=*E2ETest -Dservice.url=http://$SERVICE_URL:${SERVICE_PORT} -Dservice.name=${SERVICE_NAME} || echo "?? Algunas pruebas E2E fallaron"
-                        else
-                            echo "No hay pruebas E2E configuradas"
+                        # Guardar variables para usar fuera del script
+                        echo "$SERVICE_URL" > /tmp/service_url.txt
+                        echo "$PORT_FORWARD_PID" > /tmp/port_forward_pid.txt
+                    '''
+                    
+                    // Ejecutar pruebas E2E usando dir() para mantener el contexto
+                    if (fileExists('tests/e2e/pom.xml')) {
+                        dir('tests/e2e') {
+                            sh '''
+                                SERVICE_URL=$(cat /tmp/service_url.txt)
+                                echo "Ejecutando pruebas E2E contra: http://$SERVICE_URL:${SERVICE_PORT}"
+                                mvn test -Dtest=*E2ETest -Dservice.url=http://$SERVICE_URL:${SERVICE_PORT} -Dservice.name=${SERVICE_NAME} || echo "Algunas pruebas E2E fallaron"
+                            '''
+                        }
+                    } else {
+                        echo "No hay pruebas E2E configuradas"
+                    }
+                    
+                    // Limpiar port-forward si se usó
+                    sh '''
+                        if [ -f /tmp/port_forward_pid.txt ]; then
+                            PORT_FORWARD_PID=$(cat /tmp/port_forward_pid.txt)
+                            if [ -n "$PORT_FORWARD_PID" ] && [ "$PORT_FORWARD_PID" != "" ]; then
+                                kill $PORT_FORWARD_PID 2>/dev/null || true
+                            fi
                         fi
-                        
-                        # Limpiar port-forward si se us�
-                        if [ -n "$PORT_FORWARD_PID" ]; then
-                            kill $PORT_FORWARD_PID 2>/dev/null || true
-                        fi
+                        rm -f /tmp/service_url.txt /tmp/port_forward_pid.txt
                     '''
                 }
             }
@@ -238,8 +248,6 @@ EOF
                     
                     sh '''
                         . /root/google-cloud-sdk/path.bash.inc
-                        export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
-                        export PATH=$JAVA_HOME/bin:$PATH
                         
                         # Obtener la URL del servicio (esperar IP externa)
                         echo "? Obteniendo IP del servicio..."
@@ -269,8 +277,6 @@ EOF
                             
                             # Ejecutar Locust en modo headless (sin UI)
                             cd tests/performance
-                            export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
-                            export PATH=$JAVA_HOME/bin:$PATH
                             python3 -m locust -f locustfile.py --host=http://$SERVICE_URL:${SERVICE_PORT} \
                                 --users 50 --spawn-rate 5 --run-time 2m --headless \
                                 --html=locust-report-${SERVICE_NAME}.html || echo "?? Pruebas de rendimiento completadas con warnings"
