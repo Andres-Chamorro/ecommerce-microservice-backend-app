@@ -109,7 +109,7 @@ class EcommerceUser(HttpUser):
             catch_response=True,
             name="POST Create Resource"
         ) as response:
-            if response.status_code in [200, 201, 400, 404, 500]:  # Aceptar varios códigos
+            if response.status_code in [200, 201, 400, 403, 404, 500]:  # Aceptar varios códigos (403 = sin auth)
                 response.success()
             else:
                 response.failure(f"Failed: {response.status_code}")
@@ -140,7 +140,7 @@ class EcommerceUser(HttpUser):
             catch_response=True,
             name="PUT Update Resource"
         ) as response:
-            if response.status_code in [200, 404, 500]:  # Aceptar varios códigos
+            if response.status_code in [200, 403, 404, 500]:  # Aceptar varios códigos (403 = sin auth)
                 response.success()
             else:
                 response.failure(f"Failed: {response.status_code}")

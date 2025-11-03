@@ -163,25 +163,29 @@ EOF
                     echo "🧪 [STAGING] Ejecutando pruebas E2E..."
                     
                     sh """
-                        # Obtener la URL del servicio (LoadBalancer IP o ClusterIP si está pending)
-                        EXTERNAL_IP=\$(kubectl get svc ${SERVICE_NAME} -n ${K8S_NAMESPACE} -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null)
+                        # Para el informe: Usar port-forward para acceder al servicio
+                        echo "🧪 [INFORME] Iniciando port-forward para pruebas E2E..."
                         
-                        if [ -z "\$EXTERNAL_IP" ] || [ "\$EXTERNAL_IP" = "<pending>" ]; then
-                            echo "⚠️ LoadBalancer IP no disponible, usando ClusterIP..."
-                            SERVICE_URL=\$(kubectl get svc ${SERVICE_NAME} -n ${K8S_NAMESPACE} -o jsonpath='{.spec.clusterIP}')
-                        else
-                            SERVICE_URL=\$EXTERNAL_IP
-                        fi
+                        # Iniciar port-forward en background
+                        kubectl port-forward svc/${SERVICE_NAME} 8080:${SERVICE_PORT} -n ${K8S_NAMESPACE} &
+                        PORT_FORWARD_PID=\$!
                         
-                        echo "Service URL: \$SERVICE_URL:${SERVICE_PORT}"
+                        # Esperar a que port-forward esté listo
+                        sleep 10
+                        
+                        echo "Service URL: localhost:8080 (via port-forward)"
                         
                         # Ejecutar pruebas E2E si existen
                         if [ -d tests/e2e ]; then
                             cd tests/e2e
-                            mvn test -Dtest=*E2ETest -Dservice.url=http://\$SERVICE_URL:${SERVICE_PORT} || echo "⚠️ Algunas pruebas E2E fallaron"
+                            mvn test -Dtest=*E2ETest -Dservice.url=http://localhost:8080 || echo "⚠️ Algunas pruebas E2E fallaron"
                         else
                             echo "ℹ️ No hay pruebas E2E configuradas"
                         fi
+                        
+                        # Terminar port-forward
+                        kill \$PORT_FORWARD_PID 2>/dev/null || true
+                        sleep 2
                     """
                 }
             }
