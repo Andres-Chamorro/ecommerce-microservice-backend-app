@@ -206,10 +206,7 @@ EOF
                         if [ -f tests/performance/locustfile.py ]; then
                             cd tests/performance
                             
-                            # Instalar locust si no está instalado
-                            pip3 install locust || echo "Locust ya instalado"
-                            
-                            # Ejecutar Locust en modo headless (sin UI)
+                            # Ejecutar Locust en modo headless (sin UI) - locust ya esta instalado en Jenkins
                             locust -f locustfile.py --host=http://\$SERVICE_URL:${SERVICE_PORT} \\
                                 --users 50 --spawn-rate 5 --run-time 2m --headless \\
                                 --html=locust-report.html || echo "⚠️ Pruebas de rendimiento completadas con warnings"

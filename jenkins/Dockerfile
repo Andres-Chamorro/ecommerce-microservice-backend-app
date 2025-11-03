@@ -19,7 +19,10 @@ RUN curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/s
 RUN apt-get install -y maven
 
 # Instalar Python3 y pip para pruebas de rendimiento con Locust
-RUN apt-get install -y python3 python3-pip
+RUN apt-get install -y python3 python3-pip python3-venv
+
+# Instalar Locust globalmente (seguro en contenedor)
+RUN pip3 install --break-system-packages locust
 
 # Limpiar cache
 RUN apt-get clean && rm -rf /var/lib/apt/lists/*

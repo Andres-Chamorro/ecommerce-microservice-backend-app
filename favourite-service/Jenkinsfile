@@ -3,7 +3,7 @@ pipeline {
     
     environment {
         // Java Configuration
-        JAVA_HOME = '/opt/java/openjdk'
+        JAVA_HOME = '/usr/lib/jvm/java-17-openjdk-amd64'
         PATH = "/root/google-cloud-sdk/bin:${JAVA_HOME}/bin:${env.PATH}"
         
         // GCP & Kubernetes
@@ -12,7 +12,7 @@ pipeline {
         
         // Service Configuration
         SERVICE_NAME = 'favourite-service'
-        SERVICE_PORT = '8800'
+        SERVICE_PORT = '8600'
         
         // Docker Registry
         DOCKER_REGISTRY = 'us-central1-docker.pkg.dev/ecommerce-microservices-476519/ecommerce-registry' // Cambiar si usas Docker Hub o GCR
@@ -144,12 +144,12 @@ EOF
         stage('Wait for Rollout') {
             steps {
                 script {
-                    echo "⏳ [STAGING]Esperando a que el despliegue esté listo..."
+                    echo "⏳ [STAGING] Esperando a que el despliegue esté listo..."
                     
                     sh """
                         . /root/google-cloud-sdk/path.bash.inc
                         
-                        kubectl rollout status deployment/${SERVICE_NAME} -n ${K8S_NAMESPACE} --timeout=600s || echo "⚠️ Rollout tomó más tiempo del esperado, continuando..."
+                        kubectl rollout status deployment/${SERVICE_NAME} -n ${K8S_NAMESPACE} --timeout=300s
                         
                         echo "✅ Despliegue completado"
                     """
@@ -163,80 +163,28 @@ EOF
             }
             steps {
                 script {
-                    echo "🧪 [STAGING]Ejecutando pruebas E2E..."
+                    echo "🧪 [STAGING] Ejecutando pruebas E2E..."
                     
-                    sh '''
+                    sh """
                         . /root/google-cloud-sdk/path.bash.inc
                         
-                        # Obtener la URL del servicio (esperar hasta 2 minutos por la IP externa)
-                        echo "⏳Esperando IP externa del LoadBalancer..."
-                        i=1
-                        while [ $i -le 24 ]; do
-                            SERVICE_IP=$(kubectl get svc ${SERVICE_NAME} -n ${K8S_NAMESPACE} -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null)
-                            if [ -n "$SERVICE_IP" ]; then
-                                echo "✅IP externa obtenida: $SERVICE_IP"
-                                break
-                            fi
-                            echo "Intento $i/24:Esperando IP externa..."
-                            sleep 5
-                            i=$((i + 1))
-                        done
+                        # Obtener la URL del servicio
+                        SERVICE_URL=\$(kubectl get svc ${SERVICE_NAME} -n ${K8S_NAMESPACE} -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo 'localhost')
+                        echo "Service URL: \$SERVICE_URL:${SERVICE_PORT}"
                         
-                        if [ -z "$SERVICE_IP" ]; then
-                            echo "⚠️No se pudo obtener IP externa, usando port-forward como fallback"
-                            kubectl port-forward -n ${K8S_NAMESPACE} svc/${SERVICE_NAME} ${SERVICE_PORT}:${SERVICE_PORT} &
-                            PORT_FORWARD_PID=$!
-                            sleep 5
-                            SERVICE_URL="localhost"
+                        # Ejecutar pruebas E2E si existen
+                        if [ -d tests/e2e ]; then
+                            cd tests/e2e
+                            mvn test -Dtest=*E2ETest -Dservice.url=http://\$SERVICE_URL:${SERVICE_PORT} || echo "⚠️ Algunas pruebas E2E fallaron"
                         else
-                            SERVICE_URL="$SERVICE_IP"
+                            echo "ℹ️ No hay pruebas E2E configuradas"
                         fi
-                        
-                        echo "🌐Service URL: http://$SERVICE_URL:${SERVICE_PORT}"
-                        
-                        # Guardar variables para usar fuera del script
-                        echo "$SERVICE_URL" > /tmp/service_url.txt
-                        echo "$PORT_FORWARD_PID" > /tmp/port_forward_pid.txt
-                    '''
-                    
-                    // Ejecutar pruebas E2E usando dir() para mantener el contexto
-                    if (fileExists('tests/e2e/pom.xml')) {
-                        dir('tests/e2e') {
-                            sh '''
-                                export JAVA_HOME=/opt/java/openjdk
-                                export PATH=$JAVA_HOME/bin:$PATH
-                                
-                                SERVICE_URL=$(cat /tmp/service_url.txt)
-                                echo "Ejecutando pruebas E2E contra: http://$SERVICE_URL:${SERVICE_PORT}"
-                                mvn test -Dtest=*E2ETest -Dservice.url=http://$SERVICE_URL:${SERVICE_PORT} -Dservice.name=${SERVICE_NAME} || echo "Algunas pruebas E2E fallaron"
-                            '''
-                        }
-                    } else {
-                        echo "No hay pruebas E2E configuradas"
-                    }
-                    
-                    // Limpiar port-forward si se usó
-                    sh '''
-                        if [ -f /tmp/port_forward_pid.txt ]; then
-                            PORT_FORWARD_PID=$(cat /tmp/port_forward_pid.txt)
-                            if [ -n "$PORT_FORWARD_PID" ] && [ "$PORT_FORWARD_PID" != "" ]; then
-                                kill $PORT_FORWARD_PID 2>/dev/null || true
-                            fi
-                        fi
-                        rm -f /tmp/service_url.txt /tmp/port_forward_pid.txt
-                    '''
+                    """
                 }
             }
             post {
                 always {
-                    script {
-                        if (fileExists('tests/e2e/target/surefire-reports')) {
-                            archiveArtifacts artifacts: 'tests/e2e/target/surefire-reports/**/*.xml', allowEmptyArchive: true
-                            echo ' Reportes E2E archivados'
-                        } else {
-                            echo '? No hay reportes E2E para archivar (no hay pruebas implementadas)'
-                        }
-                    }
+                    archiveArtifacts artifacts: 'tests/e2e/target/surefire-reports/**/*.xml', allowEmptyArchive: true
                 }
             }
         }
@@ -247,70 +195,30 @@ EOF
             }
             steps {
                 script {
-                    echo "⚡ [STAGING]Ejecutando pruebas de rendimiento con Locust..."
+                    echo "⚡ [STAGING] Ejecutando pruebas de rendimiento con Locust..."
                     
-                    sh '''
+                    sh """
                         . /root/google-cloud-sdk/path.bash.inc
                         
-                        # Obtener la URL del servicio (esperar IP externa)
-                        echo "⏳ Obteniendo IP del servicio..."
-                        for i in {1..12}; do
-                            SERVICE_IP=$(kubectl get svc ${SERVICE_NAME} -n ${K8S_NAMESPACE} -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null)
-                            if [ -n "$SERVICE_IP" ]; then
-                                echo "✅ IP obtenida: $SERVICE_IP"
-                                break
-                            fi
-                            sleep 5
-                        done
+                        # Obtener la URL del servicio
+                        SERVICE_URL=\$(kubectl get svc ${SERVICE_NAME} -n ${K8S_NAMESPACE} -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo 'localhost')
                         
-                        if [ -z "$SERVICE_IP" ]; then
-                            SERVICE_URL="localhost"
-                            echo "⚠️ Usando localhost como fallback"
+                        if [ -f tests/performance/locustfile.py ]; then
+                            cd tests/performance
+                            
+                            # Ejecutar Locust en modo headless (sin UI) - locust ya esta instalado en Jenkins
+                            locust -f locustfile.py --host=http://\$SERVICE_URL:${SERVICE_PORT} \\
+                                --users 50 --spawn-rate 5 --run-time 2m --headless \\
+                                --html=locust-report.html || echo "⚠️ Pruebas de rendimiento completadas con warnings"
                         else
-                            SERVICE_URL="$SERVICE_IP"
+                            echo "ℹ️ No hay pruebas de rendimiento configuradas"
                         fi
-                        
-                        echo "🌐Service URL: http://$SERVICE_URL:${SERVICE_PORT}"
-                        
-                        # Instalar locust si no está instalado
-                        pip3 install --user locust || echo "Error instalando Locust"
-                    '''
-                    
-                    // Ejecutar pruebas de rendimiento usando dir()
-                    if (fileExists('tests/performance/locustfile.py')) {
-                        dir('tests/performance') {
-                            sh '''
-                                echo "📊Ejecutando pruebas de rendimiento..."
-                                
-                                # Obtener IP del servicio
-                                SERVICE_IP=$(kubectl get svc ${SERVICE_NAME} -n ${K8S_NAMESPACE} -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null)
-                                if [ -z "$SERVICE_IP" ]; then
-                                    SERVICE_URL="localhost"
-                                else
-                                    SERVICE_URL="$SERVICE_IP"
-                                fi
-                                
-                                python3 -m locust -f locustfile.py --host=http://$SERVICE_URL:${SERVICE_PORT} \
-                                    --users 50 --spawn-rate 5 --run-time 2m --headless \
-                                    --html=locust-report-${SERVICE_NAME}.html || echo "⚠️ Pruebas de rendimiento completadas con warnings"
-                                
-                                echo "✅Reporte generado"
-                            '''
-                        }
-                    } else {
-                        echo "ℹ️ No hay pruebas de rendimiento configuradas"
-                    }
+                    """
                 }
             }
             post {
                 always {
-                    script {
-                        if (fileExists("tests/performance/locust-report-${SERVICE_NAME}.html")) {
-                            archiveArtifacts artifacts: "tests/performance/locust-report-${SERVICE_NAME}.html", allowEmptyArchive: false
-                        } else {
-                            echo "ℹ️ No se generó reporte de rendimiento"
-                        }
-                    }
+                    archiveArtifacts artifacts: 'tests/performance/locust-report.html', allowEmptyArchive: true
                 }
             }
         }
