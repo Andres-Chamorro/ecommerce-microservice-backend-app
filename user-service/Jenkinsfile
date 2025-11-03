@@ -310,18 +310,6 @@ EOF
                     }
                 }
             }
-            post {
-                always {
-                    script {
-                        // Solo archivar si el archivo existe
-                        if (fileExists("tests/performance/locust-report-${SERVICE_NAME}.html")) {
-                            archiveArtifacts artifacts: "tests/performance/locust-report-${SERVICE_NAME}.html", allowEmptyArchive: false
-                        } else {
-                            echo "ℹ️ No se generó reporte de rendimiento (no hay pruebas configuradas)"
-                        }
-                    }
-                }
-            }
         }
         
         stage('Generate Test Report') {

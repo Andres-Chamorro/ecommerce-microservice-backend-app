@@ -310,20 +310,7 @@ EOF
                     }
                 }
             }
-            post {
-                always {
-                    script {
-                        // Solo archivar si el archivo existe
-                        def reportFile = "tests/performance/locust-report-${SERVICE_NAME}.html"
-                        if (fileExists(reportFile)) {
-                            archiveArtifacts artifacts: reportFile, allowEmptyArchive: false
-                            echo "? Reporte de rendimiento archivado"
-                        } else {
-                            echo "?? No se gener� reporte de rendimiento"
-                        }
-                    }
-                }
-            }
+
         }
         
         stage('Generate Test Report') {
