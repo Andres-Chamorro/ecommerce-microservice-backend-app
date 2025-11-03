@@ -99,7 +99,7 @@ pipeline {
                         # Aplicar deployment con la versi�n espec�fica
                         if [ -f k8s/microservices/${SERVICE_NAME}-deployment.yaml ]; then
                             kubectl set image deployment/${SERVICE_NAME} ${SERVICE_NAME}=${IMAGE_NAME}:v${params.VERSION} -n $K8S_NAMESPACE || \
-                            kubectl apply -f k8s/microservices/${SERVICE_NAME}-deployment.yaml -n $K8S_NAMESPACE
+                            sed "s/namespace: ecommerce-staging/namespace: $K8S_NAMESPACE/g" k8s/microservices/${SERVICE_NAME}-deployment.yaml | kubectl apply -f -
                         else
                             echo "?? No se encontr� deployment YAML, creando uno para producci�n..."
                             cat <<EOF | kubectl apply -f -
