@@ -90,13 +90,13 @@ pipeline {
                         . /root/google-cloud-sdk/path.bash.inc
                         
                         # Crear namespace si no existe
-                        kubectl create namespace ${K8S_NAMESPACE} --dry-run=client -o yaml | kubectl apply -f -
+                        kubectl create namespace $K8S_NAMESPACE --dry-run=client -o yaml | kubectl apply -f -
                         
                         # Aplicar deployment desde k8s/microservices
                         if [ -f k8s/microservices/${SERVICE_NAME}-deployment.yaml ]; then
                             # Actualizar la imagen en el deployment
-                            kubectl set image deployment/${SERVICE_NAME} ${SERVICE_NAME}=${IMAGE_NAME}:staging-${BUILD_TAG} -n ${K8S_NAMESPACE} || \
-                            kubectl apply -f k8s/microservices/${SERVICE_NAME}-deployment.yaml -n ${K8S_NAMESPACE}
+                            kubectl set image deployment/${SERVICE_NAME} ${SERVICE_NAME}=${IMAGE_NAME}:staging-${BUILD_TAG} -n $K8S_NAMESPACE || \
+                            kubectl apply -f k8s/microservices/${SERVICE_NAME}-deployment.yaml -n $K8S_NAMESPACE
                         else
                             echo "⚠️ No se encontró deployment YAML, creando uno temporal..."
                             cat <<EOF | kubectl apply -f -
@@ -104,7 +104,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: ${SERVICE_NAME}
-  namespace: ${K8S_NAMESPACE}
+  namespace: $K8S_NAMESPACE
 spec:
   replicas: 2
   selector:
@@ -126,7 +126,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: ${SERVICE_NAME}
-  namespace: ${K8S_NAMESPACE}
+  namespace: $K8S_NAMESPACE
 spec:
   selector:
     app: ${SERVICE_NAME}
@@ -149,7 +149,7 @@ EOF
                     sh """
                         . /root/google-cloud-sdk/path.bash.inc
                         
-                        kubectl rollout status deployment/${SERVICE_NAME} -n ${K8S_NAMESPACE} --timeout=300s
+                        kubectl rollout status deployment/${SERVICE_NAME} -n $K8S_NAMESPACE --timeout=300s
                         
                         echo "✅ Despliegue completado"
                     """
@@ -169,7 +169,7 @@ EOF
                         . /root/google-cloud-sdk/path.bash.inc
                         
                         # Obtener la URL del servicio
-                        SERVICE_URL=\$(kubectl get svc ${SERVICE_NAME} -n ${K8S_NAMESPACE} -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo 'localhost')
+                        SERVICE_URL=\$(kubectl get svc ${SERVICE_NAME} -n $K8S_NAMESPACE -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo 'localhost')
                         echo "Service URL: \$SERVICE_URL:${SERVICE_PORT}"
                         
                         # Ejecutar pruebas E2E si existen
@@ -201,7 +201,7 @@ EOF
                         . /root/google-cloud-sdk/path.bash.inc
                         
                         # Obtener la URL del servicio
-                        SERVICE_URL=\$(kubectl get svc ${SERVICE_NAME} -n ${K8S_NAMESPACE} -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo 'localhost')
+                        SERVICE_URL=\$(kubectl get svc ${SERVICE_NAME} -n $K8S_NAMESPACE -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo 'localhost')
                         
                         if [ -f tests/performance/locustfile.py ]; then
                             cd tests/performance
@@ -234,7 +234,7 @@ EOF
                         echo "==================================="
                         echo "Servicio: ${SERVICE_NAME}"
                         echo "Build: ${BUILD_TAG}"
-                        echo "Namespace: ${K8S_NAMESPACE}"
+                        echo "Namespace: $K8S_NAMESPACE"
                         echo "Imagen: ${IMAGE_NAME}:staging-${BUILD_TAG}"
                         echo "==================================="
                     """
@@ -251,12 +251,12 @@ EOF
                         . /root/google-cloud-sdk/path.bash.inc
                         
                         echo "📊 Estado de pods:"
-                        kubectl get pods -n ${K8S_NAMESPACE} -l app=${SERVICE_NAME}
+                        kubectl get pods -n $K8S_NAMESPACE -l app=${SERVICE_NAME}
                         
                         echo "📊 Estado de servicios:"
-                        kubectl get svc -n ${K8S_NAMESPACE} ${SERVICE_NAME}
+                        kubectl get svc -n $K8S_NAMESPACE ${SERVICE_NAME}
                         
-                        POD_STATUS=\$(kubectl get pods -n ${K8S_NAMESPACE} -l app=${SERVICE_NAME} -o jsonpath='{.items[0].status.phase}' 2>/dev/null || echo 'NotFound')
+                        POD_STATUS=\$(kubectl get pods -n $K8S_NAMESPACE -l app=${SERVICE_NAME} -o jsonpath='{.items[0].status.phase}' 2>/dev/null || echo 'NotFound')
                         
                         if [ "\$POD_STATUS" = "Running" ]; then
                             echo "✅ ${SERVICE_NAME} está corriendo correctamente en GKE Staging"
@@ -281,7 +281,7 @@ EOF
             ✅ Pipeline STAGING de ${SERVICE_NAME} completado
             ✅ ========================================
             📦 Imagen: ${IMAGE_NAME}:staging-${BUILD_TAG}
-            ☸️  Namespace: ${K8S_NAMESPACE}
+            ☸️  Namespace: $K8S_NAMESPACE
             🎯 Ambiente: GKE Staging
             🧪 Pruebas E2E: Ejecutadas
             ⚡ Pruebas Performance: Ejecutadas

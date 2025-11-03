@@ -28,12 +28,12 @@ pipeline {
         string(
             name: 'STAGING_BUILD_NUMBER',
             defaultValue: 'latest',
-            description: 'Número de build de STAGING a promover a producción'
+            description: 'Nï¿½mero de build de STAGING a promover a producciï¿½n'
         )
         string(
             name: 'VERSION',
             defaultValue: '1.0.0',
-            description: 'Versión semántica para el release (ej: 1.0.0, 1.1.0, 2.0.0)'
+            description: 'Versiï¿½n semï¿½ntica para el release (ej: 1.0.0, 1.1.0, 2.0.0)'
         )
         booleanParam(
             name: 'SKIP_SMOKE_TESTS',
@@ -67,16 +67,16 @@ pipeline {
         stage('Semantic Versioning') {
             steps {
                 script {
-                    echo "??? [PRODUCTION] Aplicando versionado semántico v${params.VERSION}..."
+                    echo "??? [PRODUCTION] Aplicando versionado semï¿½ntico v${params.VERSION}..."
                     def stagingTag = params.STAGING_BUILD_NUMBER == 'latest' ? 'staging-latest' : "staging-${params.STAGING_BUILD_NUMBER}"
                     
                     sh """
-                        # Etiquetar con versión semántica
+                        # Etiquetar con versiï¿½n semï¿½ntica
                         docker tag ${IMAGE_NAME}:${stagingTag} ${IMAGE_NAME}:v${params.VERSION}
                         docker tag ${IMAGE_NAME}:${stagingTag} ${IMAGE_NAME}:prod-latest
                         docker tag ${IMAGE_NAME}:${stagingTag} ${IMAGE_NAME}:prod-${BUILD_TAG}
                         
-                        echo "Subiendo imágenes versionadas a registry..."
+                        echo "Subiendo imï¿½genes versionadas a registry..."
                         docker push ${IMAGE_NAME}:v${params.VERSION}
                         docker push ${IMAGE_NAME}:prod-latest
                         docker push ${IMAGE_NAME}:prod-${BUILD_TAG}
@@ -93,21 +93,21 @@ pipeline {
                     echo "?? [PRODUCTION] Desplegando ${SERVICE_NAME} en GKE Production..."
                     
                     sh """
-                        # Crear namespace de producción si no existe
-                        kubectl create namespace ${K8S_NAMESPACE} --dry-run=client -o yaml | kubectl apply -f -
+                        # Crear namespace de producciï¿½n si no existe
+                        kubectl create namespace $K8S_NAMESPACE --dry-run=client -o yaml | kubectl apply -f -
                         
-                        # Aplicar deployment con la versión específica
+                        # Aplicar deployment con la versiï¿½n especï¿½fica
                         if [ -f k8s/microservices/${SERVICE_NAME}-deployment.yaml ]; then
-                            kubectl set image deployment/${SERVICE_NAME} ${SERVICE_NAME}=${IMAGE_NAME}:v${params.VERSION} -n ${K8S_NAMESPACE} || \
-                            kubectl apply -f k8s/microservices/${SERVICE_NAME}-deployment.yaml -n ${K8S_NAMESPACE}
+                            kubectl set image deployment/${SERVICE_NAME} ${SERVICE_NAME}=${IMAGE_NAME}:v${params.VERSION} -n $K8S_NAMESPACE || \
+                            kubectl apply -f k8s/microservices/${SERVICE_NAME}-deployment.yaml -n $K8S_NAMESPACE
                         else
-                            echo "?? No se encontró deployment YAML, creando uno para producción..."
+                            echo "?? No se encontrï¿½ deployment YAML, creando uno para producciï¿½n..."
                             cat <<EOF | kubectl apply -f -
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: ${SERVICE_NAME}
-  namespace: ${K8S_NAMESPACE}
+  namespace: $K8S_NAMESPACE
   labels:
     app: ${SERVICE_NAME}
     version: v${params.VERSION}
@@ -141,7 +141,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: ${SERVICE_NAME}
-  namespace: ${K8S_NAMESPACE}
+  namespace: $K8S_NAMESPACE
 spec:
   selector:
     app: ${SERVICE_NAME}
@@ -162,9 +162,9 @@ EOF
                     echo "? [PRODUCTION] Esperando rollout completo..."
                     
                     sh """
-                        kubectl rollout status deployment/${SERVICE_NAME} -n ${K8S_NAMESPACE} --timeout=600s
+                        kubectl rollout status deployment/${SERVICE_NAME} -n $K8S_NAMESPACE --timeout=600s
                         
-                        echo "? Rollout completado en producción"
+                        echo "? Rollout completado en producciï¿½n"
                     """
                 }
             }
@@ -186,7 +186,7 @@ EOF
                         EXTERNAL_IP=""
                         
                         while [ \$ATTEMPT -lt \$MAX_ATTEMPTS ]; do
-                            EXTERNAL_IP=\$(kubectl get svc ${SERVICE_NAME} -n ${K8S_NAMESPACE} -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null)
+                            EXTERNAL_IP=\$(kubectl get svc ${SERVICE_NAME} -n $K8S_NAMESPACE -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null)
                             
                             if [ -n "\$EXTERNAL_IP" ] && [ "\$EXTERNAL_IP" != "<pending>" ]; then
                                 echo "? LoadBalancer IP obtenida: \$EXTERNAL_IP"
@@ -200,12 +200,12 @@ EOF
                         
                         if [ -z "\$EXTERNAL_IP" ] || [ "\$EXTERNAL_IP" = "<pending>" ]; then
                             echo "?? No se pudo obtener IP externa, usando port-forward..."
-                            kubectl port-forward svc/${SERVICE_NAME} 8080:${SERVICE_PORT} -n ${K8S_NAMESPACE} &
+                            kubectl port-forward svc/$SERVICE_NAME 8080:$SERVICE_PORT -n $K8S_NAMESPACE &
                             PORT_FORWARD_PID=\$!
                             sleep 10
                             SERVICE_URL="localhost:8080"
                         else
-                            SERVICE_URL="\$EXTERNAL_IP:${SERVICE_PORT}"
+                            SERVICE_URL="\$EXTERNAL_IP:\$SERVICE_PORT"
                         fi
                         
                         echo "?? Ejecutando smoke tests contra: \$SERVICE_URL"
@@ -214,15 +214,15 @@ EOF
                         echo "Test 1: Health Check..."
                         curl -f http://\$SERVICE_URL/actuator/health || curl -f http://\$SERVICE_URL/ || echo "?? Health check no disponible"
                         
-                        # Smoke Test 2: API Endpoint básico
+                        # Smoke Test 2: API Endpoint bï¿½sico
                         echo "Test 2: API Endpoint..."
-                        curl -f http://\$SERVICE_URL/api/$(echo $SERVICE_NAME | sed 's/.*-//') || echo "?? API endpoint respondió con error"
+                        curl -f http://\$SERVICE_URL/api/$(echo $SERVICE_NAME | sed 's/.*-//') || echo "?? API endpoint respondiï¿½ con error"
                         
-                        # Smoke Test 3: Verificar versión
+                        # Smoke Test 3: Verificar versiï¿½n
                         echo "Test 3: Version Check..."
                         curl -s http://\$SERVICE_URL/actuator/info || echo "?? Info endpoint no disponible"
                         
-                        # Limpiar port-forward si se usó
+                        # Limpiar port-forward si se usï¿½
                         if [ -n "\$PORT_FORWARD_PID" ]; then
                             kill \$PORT_FORWARD_PID 2>/dev/null || true
                         fi
@@ -236,28 +236,28 @@ EOF
         stage('Verify Production') {
             steps {
                 script {
-                    echo "? [PRODUCTION] Verificando despliegue en producción..."
+                    echo "? [PRODUCTION] Verificando despliegue en producciï¿½n..."
                     
                     sh """
-                        echo "?? Estado de pods en producción:"
-                        kubectl get pods -n ${K8S_NAMESPACE} -l app=${SERVICE_NAME}
+                        echo "?? Estado de pods en producciï¿½n:"
+                        kubectl get pods -n $K8S_NAMESPACE -l app=${SERVICE_NAME}
                         
                         echo "?? Estado de servicios:"
-                        kubectl get svc -n ${K8S_NAMESPACE} ${SERVICE_NAME}
+                        kubectl get svc -n $K8S_NAMESPACE ${SERVICE_NAME}
                         
                         echo "?? Estado de deployment:"
-                        kubectl get deployment ${SERVICE_NAME} -n ${K8S_NAMESPACE}
+                        kubectl get deployment ${SERVICE_NAME} -n $K8S_NAMESPACE
                         
-                        # Verificar que todos los pods estén running
-                        READY_PODS=\$(kubectl get pods -n ${K8S_NAMESPACE} -l app=${SERVICE_NAME} -o jsonpath='{.items[*].status.phase}' | grep -o "Running" | wc -l)
-                        TOTAL_PODS=\$(kubectl get pods -n ${K8S_NAMESPACE} -l app=${SERVICE_NAME} --no-headers | wc -l)
+                        # Verificar que todos los pods estï¿½n running
+                        READY_PODS=\$(kubectl get pods -n $K8S_NAMESPACE -l app=${SERVICE_NAME} -o jsonpath='{.items[*].status.phase}' | grep -o "Running" | wc -l)
+                        TOTAL_PODS=\$(kubectl get pods -n $K8S_NAMESPACE -l app=${SERVICE_NAME} --no-headers | wc -l)
                         
                         echo "Pods listos: \$READY_PODS/\$TOTAL_PODS"
                         
                         if [ "\$READY_PODS" -eq "\$TOTAL_PODS" ] && [ "\$TOTAL_PODS" -gt 0 ]; then
-                            echo "? Todos los pods están corriendo correctamente en producción"
+                            echo "? Todos los pods estï¿½n corriendo correctamente en producciï¿½n"
                         else
-                            echo "?? WARNING: No todos los pods están en estado Running"
+                            echo "?? WARNING: No todos los pods estï¿½n en estado Running"
                             exit 1
                         fi
                     """
@@ -284,7 +284,7 @@ EOF
 - **Build Number**: ${BUILD_TAG}
 - **Date**: \$(date '+%Y-%m-%d %H:%M:%S')
 - **Environment**: Production (GKE)
-- **Namespace**: ${K8S_NAMESPACE}
+- **Namespace**: $K8S_NAMESPACE
 
 ## ?? Deployment Details
 - **Source Build**: staging-${params.STAGING_BUILD_NUMBER}
@@ -298,10 +298,10 @@ EOF
 - All Pods Running: Yes
 
 ## ?? Deployment Status
-\$(kubectl get deployment ${SERVICE_NAME} -n ${K8S_NAMESPACE} -o wide)
+\$(kubectl get deployment ${SERVICE_NAME} -n $K8S_NAMESPACE -o wide)
 
 ## ?? Service Endpoints
-\$(kubectl get svc ${SERVICE_NAME} -n ${K8S_NAMESPACE})
+\$(kubectl get svc ${SERVICE_NAME} -n $K8S_NAMESPACE)
 
 ## ?? Changes
 - Promoted from staging build ${params.STAGING_BUILD_NUMBER}
@@ -355,18 +355,18 @@ EOF
             ? ========================================
             ? RELEASE EXITOSO - ${SERVICE_NAME} v${params.VERSION}
             ? ========================================
-            ?? Versión: v${params.VERSION}
+            ?? Versiï¿½n: v${params.VERSION}
             ?? Imagen: ${IMAGE_NAME}:v${params.VERSION}
-            ??  Namespace: ${K8S_NAMESPACE}
+            ??  Namespace: $K8S_NAMESPACE
             ?? Ambiente: GKE Production
             ?? Smoke Tests: Passed
-            ? Verificación: Passed
+            ? Verificaciï¿½n: Passed
             ?? Release Notes: Generadas
             ? ========================================
             """
         }
         failure {
-            echo "? Release de ${SERVICE_NAME} v${params.VERSION} falló en producción"
+            echo "? Release de ${SERVICE_NAME} v${params.VERSION} fallï¿½ en producciï¿½n"
         }
     }
 }
