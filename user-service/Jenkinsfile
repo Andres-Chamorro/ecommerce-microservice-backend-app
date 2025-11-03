@@ -162,9 +162,9 @@ EOF
                     echo "? [PRODUCTION] Esperando rollout completo..."
                     
                     sh """
-                        kubectl rollout status deployment/${SERVICE_NAME} -n $K8S_NAMESPACE --timeout=600s || echo "Rollout timeout - continuing anyway"
+                        kubectl rollout status deployment/${SERVICE_NAME} -n $K8S_NAMESPACE --timeout=600s
                         
-                        echo "? Rollout completado o timeout alcanzado"
+                        echo "? Rollout completado en producción"
                     """
                 }
             }
