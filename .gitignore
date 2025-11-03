@@ -45,3 +45,11 @@ jenkins-gke-key.json
 
 # Environment files with secrets
 .env.gcp
+
+# Temporary kubeconfig files
+temp-*.yaml
+temp-*.crt
+temp-*.key
+*-kubeconfig.yaml
+full-kubeconfig.yaml
+minikube-kubeconfig.yaml

@@ -65,7 +65,7 @@ metadata:
   labels:
     app: product-service
 spec:
-  type: ClusterIP
+  type: LoadBalancer  # IP externa para pruebas E2E
   ports:
   - port: 8500
     targetPort: 8500

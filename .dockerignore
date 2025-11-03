@@ -1,0 +1,18 @@
+# Excluir todo excepto lo necesario
+**/target
+**/node_modules
+**/.git
+**/.idea
+**/.vscode
+**/test
+**/tests
+**/*.md
+**/.env
+**/.DS_Store
+**/Dockerfile*
+**/Jenkinsfile*
+scripts/
+.kiro/
+
+# Solo incluir los JARs necesarios
+!*/target/*.jar
