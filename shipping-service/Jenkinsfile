@@ -267,26 +267,47 @@ EOF
                             SERVICE_URL="$SERVICE_IP"
                         fi
                         
-                        echo "??Service URL: http://$SERVICE_URL:${SERVICE_PORT}"
+                        echo "🌐 Service URL: http://$SERVICE_URL:${SERVICE_PORT}"
                         
-                        if [ -f tests/performance/locustfile.py ]; then
-                            echo "??Ejecutando pruebas de rendimiento..."
-                            
-                            # Instalar locust si no est� instalado
-                            pip3 install --user locust || echo "Error instalando Locust"
-                            
-                            # Ejecutar Locust en modo headless (sin UI)
-                            cd tests/performance
-                            python3 -m locust -f locustfile.py --host=http://$SERVICE_URL:${SERVICE_PORT} \
-                                --users 50 --spawn-rate 5 --run-time 2m --headless \
-                                --html=locust-report-${SERVICE_NAME}.html || echo "?? Pruebas de rendimiento completadas con warnings"
-                            
-                            echo "?Reporte generado en tests/performance/locust-report-${SERVICE_NAME}.html"
-                        else
-                            echo "No hay pruebas de rendimiento configuradas"
-                            echo "Saltando pruebas de rendimiento..."
-                        fi
+                        # Instalar locust si no está instalado
+                        pip3 install --user locust || echo "Error instalando Locust"
                     '''
+                    
+                    // Ejecutar pruebas de rendimiento usando dir()
+                    if (fileExists('tests/performance/locustfile.py')) {
+                        dir('tests/performance') {
+                            sh '''
+                                echo "📊 Ejecutando pruebas de rendimiento..."
+                                
+                                # Obtener IP del servicio
+                                SERVICE_IP=$(kubectl get svc ${SERVICE_NAME} -n ${K8S_NAMESPACE} -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null)
+                                if [ -z "$SERVICE_IP" ]; then
+                                    SERVICE_URL="localhost"
+                                else
+                                    SERVICE_URL="$SERVICE_IP"
+                                fi
+                                
+                                python3 -m locust -f locustfile.py --host=http://$SERVICE_URL:${SERVICE_PORT} \
+                                    --users 50 --spawn-rate 5 --run-time 2m --headless \
+                                    --html=locust-report-${SERVICE_NAME}.html || echo "⚠️ Pruebas de rendimiento completadas con warnings"
+                                
+                                echo "✅ Reporte generado"
+                            '''
+                        }
+                    } else {
+                        echo "ℹ️ No hay pruebas de rendimiento configuradas"
+                    }
+                }
+            }
+            post {
+                always {
+                    script {
+                        if (fileExists("tests/performance/locust-report-${SERVICE_NAME}.html")) {
+                            archiveArtifacts artifacts: "tests/performance/locust-report-${SERVICE_NAME}.html", allowEmptyArchive: false
+                        } else {
+                            echo "ℹ️ No se generó reporte de rendimiento"
+                        }
+                    }
                 }
             }
             post {
