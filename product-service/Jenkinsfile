@@ -3,11 +3,12 @@ pipeline {
     
     environment {
         // Java Configuration
-        JAVA_HOME = '/usr/lib/jvm/java-17-openjdk-amd64'
+        JAVA_HOME = '/opt/java/openjdk'
         PATH = "/root/google-cloud-sdk/bin:${JAVA_HOME}/bin:${env.PATH}"
         
         // GCP & Kubernetes
         USE_GKE_GCLOUD_AUTH_PLUGIN = 'True'
+        CLOUDSDK_PYTHON = '/usr/bin/python3'
         K8S_NAMESPACE = 'ecommerce-staging'
         
         // Service Configuration
@@ -86,9 +87,7 @@ pipeline {
                 script {
                     echo "☸️ [STAGING] Desplegando ${SERVICE_NAME} en GKE Staging..."
                     
-                    sh """
-                        . /root/google-cloud-sdk/path.bash.inc
-                        
+                    sh """                        
                         # Crear namespace si no existe
                         kubectl create namespace ${K8S_NAMESPACE} --dry-run=client -o yaml | kubectl apply -f -
                         
@@ -146,9 +145,7 @@ EOF
                 script {
                     echo "⏳ [STAGING] Esperando a que el despliegue esté listo..."
                     
-                    sh """
-                        . /root/google-cloud-sdk/path.bash.inc
-                        
+                    sh """                        
                         kubectl rollout status deployment/${SERVICE_NAME} -n ${K8S_NAMESPACE} --timeout=300s
                         
                         echo "✅ Despliegue completado"
@@ -165,9 +162,7 @@ EOF
                 script {
                     echo "🧪 [STAGING] Ejecutando pruebas E2E..."
                     
-                    sh """
-                        . /root/google-cloud-sdk/path.bash.inc
-                        
+                    sh """                        
                         # Obtener la URL del servicio
                         SERVICE_URL=\$(kubectl get svc ${SERVICE_NAME} -n ${K8S_NAMESPACE} -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo 'localhost')
                         echo "Service URL: \$SERVICE_URL:${SERVICE_PORT}"
@@ -197,9 +192,7 @@ EOF
                 script {
                     echo "⚡ [STAGING] Ejecutando pruebas de rendimiento con Locust..."
                     
-                    sh """
-                        . /root/google-cloud-sdk/path.bash.inc
-                        
+                    sh """                        
                         # Obtener la URL del servicio
                         SERVICE_URL=\$(kubectl get svc ${SERVICE_NAME} -n ${K8S_NAMESPACE} -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo 'localhost')
                         
@@ -247,9 +240,7 @@ EOF
                 script {
                     echo "🏥 [STAGING] Verificando health checks..."
                     
-                    sh """
-                        . /root/google-cloud-sdk/path.bash.inc
-                        
+                    sh """                        
                         echo "📊 Estado de pods:"
                         kubectl get pods -n ${K8S_NAMESPACE} -l app=${SERVICE_NAME}
                         
