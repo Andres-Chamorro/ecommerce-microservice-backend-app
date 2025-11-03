@@ -163,8 +163,16 @@ EOF
                     echo "🧪 [STAGING] Ejecutando pruebas E2E..."
                     
                     sh """
-                        # Obtener la URL del servicio
-                        SERVICE_URL=\$(kubectl get svc ${SERVICE_NAME} -n ${K8S_NAMESPACE} -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo 'localhost')
+                        # Obtener la URL del servicio (LoadBalancer IP o ClusterIP si está pending)
+                        EXTERNAL_IP=\$(kubectl get svc ${SERVICE_NAME} -n ${K8S_NAMESPACE} -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null)
+                        
+                        if [ -z "\$EXTERNAL_IP" ] || [ "\$EXTERNAL_IP" = "<pending>" ]; then
+                            echo "⚠️ LoadBalancer IP no disponible, usando ClusterIP..."
+                            SERVICE_URL=\$(kubectl get svc ${SERVICE_NAME} -n ${K8S_NAMESPACE} -o jsonpath='{.spec.clusterIP}')
+                        else
+                            SERVICE_URL=\$EXTERNAL_IP
+                        fi
+                        
                         echo "Service URL: \$SERVICE_URL:${SERVICE_PORT}"
                         
                         # Ejecutar pruebas E2E si existen
@@ -193,8 +201,32 @@ EOF
                     echo "⚡ [STAGING] Ejecutando pruebas de rendimiento con Locust..."
                     
                     sh """
-                        # Obtener la URL del servicio
-                        SERVICE_URL=\$(kubectl get svc ${SERVICE_NAME} -n ${K8S_NAMESPACE} -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo 'localhost')
+                        # Esperar hasta 2 minutos por la IP del LoadBalancer
+                        echo "⏳ Esperando IP externa del LoadBalancer..."
+                        MAX_ATTEMPTS=24
+                        ATTEMPT=0
+                        EXTERNAL_IP=""
+                        
+                        while [ \$ATTEMPT -lt \$MAX_ATTEMPTS ]; do
+                            EXTERNAL_IP=\$(kubectl get svc ${SERVICE_NAME} -n ${K8S_NAMESPACE} -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null)
+                            
+                            if [ -n "\$EXTERNAL_IP" ] && [ "\$EXTERNAL_IP" != "<pending>" ]; then
+                                echo "✅ LoadBalancer IP obtenida: \$EXTERNAL_IP"
+                                break
+                            fi
+                            
+                            ATTEMPT=\$((ATTEMPT + 1))
+                            echo "⏳ Intento \$ATTEMPT/\$MAX_ATTEMPTS - Esperando 5 segundos..."
+                            sleep 5
+                        done
+                        
+                        if [ -z "\$EXTERNAL_IP" ] || [ "\$EXTERNAL_IP" = "<pending>" ]; then
+                            echo "⚠️ LoadBalancer IP no disponible después de 2 minutos - Saltando pruebas de performance"
+                            echo "ℹ️ Las pruebas de performance requieren acceso externo al servicio"
+                            exit 0
+                        fi
+                        
+                        SERVICE_URL=\$EXTERNAL_IP
                         
                         if [ -f tests/performance/locustfile.py ]; then
                             cd tests/performance
