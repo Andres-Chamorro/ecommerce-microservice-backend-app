@@ -205,7 +205,7 @@ EOF
                             sleep 10
                             SERVICE_URL="localhost:8080"
                         else
-                            SERVICE_URL="\$EXTERNAL_IP:${SERVICE_PORT}"
+                            SERVICE_URL="\$EXTERNAL_IP:\${SERVICE_PORT}"
                         fi
                         
                         echo "?? Ejecutando smoke tests contra: \$SERVICE_URL"
