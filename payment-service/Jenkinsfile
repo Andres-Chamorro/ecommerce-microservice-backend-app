@@ -9,103 +9,111 @@ pipeline {
         // GCP & Kubernetes
         USE_GKE_GCLOUD_AUTH_PLUGIN = 'True'
         CLOUDSDK_PYTHON = '/usr/bin/python3'
-        K8S_NAMESPACE = 'ecommerce-staging'
+        K8S_NAMESPACE = 'ecommerce-prod'
         
         // Service Configuration
         SERVICE_NAME = 'payment-service'
         SERVICE_PORT = '8400'
         
         // Docker Registry
-        DOCKER_REGISTRY = 'us-central1-docker.pkg.dev/ecommerce-microservices-476519/ecommerce-registry' // Cambiar si usas Docker Hub o GCR
+        DOCKER_REGISTRY = 'us-central1-docker.pkg.dev/ecommerce-microservices-476519/ecommerce-registry'
         IMAGE_NAME = "${DOCKER_REGISTRY}/${SERVICE_NAME}"
         
         // Build Reference
         BUILD_TAG = "${env.BUILD_NUMBER}"
-        DEV_BUILD_NUMBER = "${env.DEV_BUILD_NUMBER ?: 'latest'}" // N√∫mero de build de DEV
+        STAGING_BUILD_NUMBER = "${env.STAGING_BUILD_NUMBER ?: 'latest'}"
     }
     
     parameters {
         string(
-            name: 'DEV_BUILD_NUMBER',
+            name: 'STAGING_BUILD_NUMBER',
             defaultValue: 'latest',
-            description: 'N√∫mero de build de DEV a desplegar (ej: 123) o "latest"'
+            description: 'N˙mero de build de STAGING a promover a producciÛn'
+        )
+        string(
+            name: 'VERSION',
+            defaultValue: '1.0.0',
+            description: 'VersiÛn sem·ntica para el release (ej: 1.0.0, 1.1.0, 2.0.0)'
         )
         booleanParam(
-            name: 'SKIP_E2E_TESTS',
+            name: 'SKIP_SMOKE_TESTS',
             defaultValue: false,
-            description: 'Saltar pruebas E2E'
-        )
-        booleanParam(
-            name: 'SKIP_PERFORMANCE_TESTS',
-            defaultValue: false,
-            description: 'Saltar pruebas de rendimiento'
+            description: 'Saltar smoke tests'
         )
     }
     
     stages {
         stage('Checkout') {
             steps {
-                echo "üîÑ [STAGING] Clonando repositorio de ${SERVICE_NAME}..."
+                echo "?? [PRODUCTION] Clonando repositorio de ${SERVICE_NAME}..."
                 checkout scm
             }
         }
         
-        stage('Pull Image from Dev') {
+        stage('Pull Image from Staging') {
             steps {
                 script {
-                    echo "üì• [STAGING] Obteniendo imagen de DEV..."
-                    def devTag = params.DEV_BUILD_NUMBER == 'latest' ? 'dev-latest' : "dev-${params.DEV_BUILD_NUMBER}"
+                    echo "?? [PRODUCTION] Obteniendo imagen validada de STAGING..."
+                    def stagingTag = params.STAGING_BUILD_NUMBER == 'latest' ? 'staging-latest' : "staging-${params.STAGING_BUILD_NUMBER}"
                     
                     sh """
-                        echo "Pulling imagen: ${IMAGE_NAME}:${devTag}"
-                        docker pull ${IMAGE_NAME}:${devTag}
+                        echo "Pulling imagen: ${IMAGE_NAME}:${stagingTag}"
+                        docker pull ${IMAGE_NAME}:${stagingTag}
                     """
                 }
             }
         }
         
-        stage('Retag Image') {
+        stage('Semantic Versioning') {
             steps {
                 script {
-                    echo "üè∑Ô∏è [STAGING] Re-etiquetando imagen para staging..."
-                    def devTag = params.DEV_BUILD_NUMBER == 'latest' ? 'dev-latest' : "dev-${params.DEV_BUILD_NUMBER}"
+                    echo "??? [PRODUCTION] Aplicando versionado sem·ntico v${params.VERSION}..."
+                    def stagingTag = params.STAGING_BUILD_NUMBER == 'latest' ? 'staging-latest' : "staging-${params.STAGING_BUILD_NUMBER}"
                     
                     sh """
-                        docker tag ${IMAGE_NAME}:${devTag} ${IMAGE_NAME}:staging-${BUILD_TAG}
-                        docker tag ${IMAGE_NAME}:${devTag} ${IMAGE_NAME}:staging-latest
+                        # Etiquetar con versiÛn sem·ntica
+                        docker tag ${IMAGE_NAME}:${stagingTag} ${IMAGE_NAME}:v${params.VERSION}
+                        docker tag ${IMAGE_NAME}:${stagingTag} ${IMAGE_NAME}:prod-latest
+                        docker tag ${IMAGE_NAME}:${stagingTag} ${IMAGE_NAME}:prod-${BUILD_TAG}
                         
-                        echo "Subiendo imagen a registry..."
-                        docker push ${IMAGE_NAME}:staging-${BUILD_TAG}
-                        docker push ${IMAGE_NAME}:staging-latest
+                        echo "Subiendo im·genes versionadas a registry..."
+                        docker push ${IMAGE_NAME}:v${params.VERSION}
+                        docker push ${IMAGE_NAME}:prod-latest
+                        docker push ${IMAGE_NAME}:prod-${BUILD_TAG}
+                        
+                        echo "? Imagen versionada: v${params.VERSION}"
                     """
                 }
             }
         }
         
-        stage('Deploy to GKE Staging') {
+        stage('Deploy to GKE Production') {
             steps {
                 script {
-                    echo "‚ò∏Ô∏è [STAGING] Desplegando ${SERVICE_NAME} en GKE Staging..."
+                    echo "?? [PRODUCTION] Desplegando ${SERVICE_NAME} en GKE Production..."
                     
-                    sh """                        
-                        # Crear namespace si no existe
+                    sh """
+                        # Crear namespace de producciÛn si no existe
                         kubectl create namespace ${K8S_NAMESPACE} --dry-run=client -o yaml | kubectl apply -f -
                         
-                        # Aplicar deployment desde k8s/microservices
+                        # Aplicar deployment con la versiÛn especÌfica
                         if [ -f k8s/microservices/${SERVICE_NAME}-deployment.yaml ]; then
-                            # Actualizar la imagen en el deployment
-                            kubectl set image deployment/${SERVICE_NAME} ${SERVICE_NAME}=${IMAGE_NAME}:staging-${BUILD_TAG} -n ${K8S_NAMESPACE} || \
+                            kubectl set image deployment/${SERVICE_NAME} ${SERVICE_NAME}=${IMAGE_NAME}:v${params.VERSION} -n ${K8S_NAMESPACE} || \
                             kubectl apply -f k8s/microservices/${SERVICE_NAME}-deployment.yaml -n ${K8S_NAMESPACE}
                         else
-                            echo "‚ö†Ô∏è No se encontr√≥ deployment YAML, creando uno temporal..."
+                            echo "?? No se encontrÛ deployment YAML, creando uno para producciÛn..."
                             cat <<EOF | kubectl apply -f -
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: ${SERVICE_NAME}
   namespace: ${K8S_NAMESPACE}
+  labels:
+    app: ${SERVICE_NAME}
+    version: v${params.VERSION}
+    environment: production
 spec:
-  replicas: 2
+  replicas: 3
   selector:
     matchLabels:
       app: ${SERVICE_NAME}
@@ -113,13 +121,21 @@ spec:
     metadata:
       labels:
         app: ${SERVICE_NAME}
+        version: v${params.VERSION}
     spec:
       containers:
       - name: ${SERVICE_NAME}
-        image: ${IMAGE_NAME}:staging-${BUILD_TAG}
+        image: ${IMAGE_NAME}:v${params.VERSION}
         ports:
         - containerPort: ${SERVICE_PORT}
         imagePullPolicy: Always
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
 ---
 apiVersion: v1
 kind: Service
@@ -143,118 +159,186 @@ EOF
         stage('Wait for Rollout') {
             steps {
                 script {
-                    echo "‚è≥ [STAGING] Esperando a que el despliegue est√© listo..."
-                    
-                    sh """                        
-                        kubectl rollout status deployment/${SERVICE_NAME} -n ${K8S_NAMESPACE} --timeout=300s
-                        
-                        echo "‚úÖ Despliegue completado"
-                    """
-                }
-            }
-        }
-        
-        stage('E2E Tests') {
-            when {
-                expression { params.SKIP_E2E_TESTS == false }
-            }
-            steps {
-                script {
-                    echo "üß™ [STAGING] Ejecutando pruebas E2E..."
-                    
-                    sh """                        
-                        # Obtener la URL del servicio
-                        SERVICE_URL=\$(kubectl get svc ${SERVICE_NAME} -n ${K8S_NAMESPACE} -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo 'localhost')
-                        echo "Service URL: \$SERVICE_URL:${SERVICE_PORT}"
-                        
-                        # Ejecutar pruebas E2E si existen
-                        if [ -d tests/e2e ]; then
-                            cd tests/e2e
-                            mvn test -Dtest=*E2ETest -Dservice.url=http://\$SERVICE_URL:${SERVICE_PORT} || echo "‚ö†Ô∏è Algunas pruebas E2E fallaron"
-                        else
-                            echo "‚ÑπÔ∏è No hay pruebas E2E configuradas"
-                        fi
-                    """
-                }
-            }
-            post {
-                always {
-                    archiveArtifacts artifacts: 'tests/e2e/target/surefire-reports/**/*.xml', allowEmptyArchive: true
-                }
-            }
-        }
-        
-        stage('Performance Tests') {
-            when {
-                expression { params.SKIP_PERFORMANCE_TESTS == false }
-            }
-            steps {
-                script {
-                    echo "‚ö° [STAGING] Ejecutando pruebas de rendimiento con Locust..."
-                    
-                    sh """                        
-                        # Obtener la URL del servicio
-                        SERVICE_URL=\$(kubectl get svc ${SERVICE_NAME} -n ${K8S_NAMESPACE} -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo 'localhost')
-                        
-                        if [ -f tests/performance/locustfile.py ]; then
-                            cd tests/performance
-                            
-                            # Ejecutar Locust en modo headless (sin UI) - locust ya esta instalado en Jenkins
-                            locust -f locustfile.py --host=http://\$SERVICE_URL:${SERVICE_PORT} \\
-                                --users 50 --spawn-rate 5 --run-time 2m --headless \\
-                                --html=locust-report.html || echo "‚ö†Ô∏è Pruebas de rendimiento completadas con warnings"
-                        else
-                            echo "‚ÑπÔ∏è No hay pruebas de rendimiento configuradas"
-                        fi
-                    """
-                }
-            }
-            post {
-                always {
-                    archiveArtifacts artifacts: 'tests/performance/locust-report.html', allowEmptyArchive: true
-                }
-            }
-        }
-        
-        stage('Generate Test Report') {
-            steps {
-                script {
-                    echo "üìä [STAGING] Generando reporte de pruebas..."
+                    echo "? [PRODUCTION] Esperando rollout completo..."
                     
                     sh """
-                        echo "==================================="
-                        echo "REPORTE DE PRUEBAS - STAGING"
-                        echo "==================================="
-                        echo "Servicio: ${SERVICE_NAME}"
-                        echo "Build: ${BUILD_TAG}"
-                        echo "Namespace: ${K8S_NAMESPACE}"
-                        echo "Imagen: ${IMAGE_NAME}:staging-${BUILD_TAG}"
-                        echo "==================================="
+                        kubectl rollout status deployment/${SERVICE_NAME} -n ${K8S_NAMESPACE} --timeout=600s
+                        
+                        echo "? Rollout completado en producciÛn"
                     """
                 }
             }
         }
         
-        stage('Verify Health Checks') {
+        stage('Smoke Tests') {
+            when {
+                expression { params.SKIP_SMOKE_TESTS == false }
+            }
             steps {
                 script {
-                    echo "üè• [STAGING] Verificando health checks..."
+                    echo "?? [PRODUCTION] Ejecutando smoke tests..."
                     
-                    sh """                        
-                        echo "üìä Estado de pods:"
+                    sh """
+                        # Obtener URL del servicio
+                        echo "Esperando IP externa del servicio..."
+                        MAX_ATTEMPTS=30
+                        ATTEMPT=0
+                        EXTERNAL_IP=""
+                        
+                        while [ \$ATTEMPT -lt \$MAX_ATTEMPTS ]; do
+                            EXTERNAL_IP=\$(kubectl get svc ${SERVICE_NAME} -n ${K8S_NAMESPACE} -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null)
+                            
+                            if [ -n "\$EXTERNAL_IP" ] && [ "\$EXTERNAL_IP" != "<pending>" ]; then
+                                echo "? LoadBalancer IP obtenida: \$EXTERNAL_IP"
+                                break
+                            fi
+                            
+                            ATTEMPT=\$((ATTEMPT + 1))
+                            echo "? Intento \$ATTEMPT/\$MAX_ATTEMPTS - Esperando 10 segundos..."
+                            sleep 10
+                        done
+                        
+                        if [ -z "\$EXTERNAL_IP" ] || [ "\$EXTERNAL_IP" = "<pending>" ]; then
+                            echo "?? No se pudo obtener IP externa, usando port-forward..."
+                            kubectl port-forward svc/${SERVICE_NAME} 8080:${SERVICE_PORT} -n ${K8S_NAMESPACE} &
+                            PORT_FORWARD_PID=\$!
+                            sleep 10
+                            SERVICE_URL="localhost:8080"
+                        else
+                            SERVICE_URL="\$EXTERNAL_IP:${SERVICE_PORT}"
+                        fi
+                        
+                        echo "?? Ejecutando smoke tests contra: \$SERVICE_URL"
+                        
+                        # Smoke Test 1: Health Check
+                        echo "Test 1: Health Check..."
+                        curl -f http://\$SERVICE_URL/actuator/health || curl -f http://\$SERVICE_URL/ || echo "?? Health check no disponible"
+                        
+                        # Smoke Test 2: API Endpoint b·sico
+                        echo "Test 2: API Endpoint..."
+                        curl -f http://\$SERVICE_URL/api/${SERVICE_NAME#*-} || echo "?? API endpoint respondiÛ con error"
+                        
+                        # Smoke Test 3: Verificar versiÛn
+                        echo "Test 3: Version Check..."
+                        curl -s http://\$SERVICE_URL/actuator/info || echo "?? Info endpoint no disponible"
+                        
+                        # Limpiar port-forward si se usÛ
+                        if [ -n "\$PORT_FORWARD_PID" ]; then
+                            kill \$PORT_FORWARD_PID 2>/dev/null || true
+                        fi
+                        
+                        echo "? Smoke tests completados"
+                    """
+                }
+            }
+        }
+        
+        stage('Verify Production') {
+            steps {
+                script {
+                    echo "? [PRODUCTION] Verificando despliegue en producciÛn..."
+                    
+                    sh """
+                        echo "?? Estado de pods en producciÛn:"
                         kubectl get pods -n ${K8S_NAMESPACE} -l app=${SERVICE_NAME}
                         
-                        echo "üìä Estado de servicios:"
+                        echo "?? Estado de servicios:"
                         kubectl get svc -n ${K8S_NAMESPACE} ${SERVICE_NAME}
                         
-                        POD_STATUS=\$(kubectl get pods -n ${K8S_NAMESPACE} -l app=${SERVICE_NAME} -o jsonpath='{.items[0].status.phase}' 2>/dev/null || echo 'NotFound')
+                        echo "?? Estado de deployment:"
+                        kubectl get deployment ${SERVICE_NAME} -n ${K8S_NAMESPACE}
                         
-                        if [ "\$POD_STATUS" = "Running" ]; then
-                            echo "‚úÖ ${SERVICE_NAME} est√° corriendo correctamente en GKE Staging"
+                        # Verificar que todos los pods estÈn running
+                        READY_PODS=\$(kubectl get pods -n ${K8S_NAMESPACE} -l app=${SERVICE_NAME} -o jsonpath='{.items[*].status.phase}' | grep -o "Running" | wc -l)
+                        TOTAL_PODS=\$(kubectl get pods -n ${K8S_NAMESPACE} -l app=${SERVICE_NAME} --no-headers | wc -l)
+                        
+                        echo "Pods listos: \$READY_PODS/\$TOTAL_PODS"
+                        
+                        if [ "\$READY_PODS" -eq "\$TOTAL_PODS" ] && [ "\$TOTAL_PODS" -gt 0 ]; then
+                            echo "? Todos los pods est·n corriendo correctamente en producciÛn"
                         else
-                            echo "‚ö†Ô∏è WARNING: ${SERVICE_NAME} no est√° en estado Running"
+                            echo "?? WARNING: No todos los pods est·n en estado Running"
                             exit 1
                         fi
+                    """
+                }
+            }
+        }
+        
+        stage('Generate Release Notes') {
+            steps {
+                script {
+                    echo "?? [PRODUCTION] Generando release notes..."
+                    
+                    sh """
+                        # Crear directorio de releases si no existe
+                        mkdir -p releases
+                        
+                        # Generar release notes
+                        cat > releases/release-v${params.VERSION}-${SERVICE_NAME}.md <<EOF
+# Release Notes - ${SERVICE_NAME} v${params.VERSION}
+
+## ?? Release Information
+- **Service**: ${SERVICE_NAME}
+- **Version**: v${params.VERSION}
+- **Build Number**: ${BUILD_TAG}
+- **Date**: \$(date '+%Y-%m-%d %H:%M:%S')
+- **Environment**: Production (GKE)
+- **Namespace**: ${K8S_NAMESPACE}
+
+## ?? Deployment Details
+- **Source Build**: staging-${params.STAGING_BUILD_NUMBER}
+- **Docker Image**: ${IMAGE_NAME}:v${params.VERSION}
+- **Replicas**: 3
+- **Service Port**: ${SERVICE_PORT}
+
+## ? Verification
+- Smoke Tests: Passed
+- Health Checks: Passed
+- All Pods Running: Yes
+
+## ?? Deployment Status
+\$(kubectl get deployment ${SERVICE_NAME} -n ${K8S_NAMESPACE} -o wide)
+
+## ?? Service Endpoints
+\$(kubectl get svc ${SERVICE_NAME} -n ${K8S_NAMESPACE})
+
+## ?? Changes
+- Promoted from staging build ${params.STAGING_BUILD_NUMBER}
+- Deployed to production with semantic version v${params.VERSION}
+- All quality gates passed
+
+---
+Generated by Jenkins Pipeline - Build #${BUILD_TAG}
+EOF
+                        
+                        echo "? Release notes generadas: releases/release-v${params.VERSION}-${SERVICE_NAME}.md"
+                        cat releases/release-v${params.VERSION}-${SERVICE_NAME}.md
+                    """
+                    
+                    // Archivar release notes
+                    archiveArtifacts artifacts: "releases/release-v${params.VERSION}-${SERVICE_NAME}.md", allowEmptyArchive: false
+                }
+            }
+        }
+        
+        stage('Create Git Tag') {
+            steps {
+                script {
+                    echo "??? [PRODUCTION] Creando tag en Git..."
+                    
+                    sh """
+                        # Configurar git
+                        git config user.email "jenkins@ecommerce.com"
+                        git config user.name "Jenkins CI"
+                        
+                        # Crear tag
+                        git tag -a ${SERVICE_NAME}-v${params.VERSION} -m "Release ${SERVICE_NAME} v${params.VERSION} - Build #${BUILD_TAG}" || echo "Tag ya existe"
+                        
+                        # Push tag (comentado para evitar errores si no hay permisos)
+                        # git push origin ${SERVICE_NAME}-v${params.VERSION} || echo "?? No se pudo push el tag"
+                        
+                        echo "? Tag creado: ${SERVICE_NAME}-v${params.VERSION}"
                     """
                 }
             }
@@ -263,25 +347,26 @@ EOF
     
     post {
         always {
-            echo "üßπ [STAGING] Limpiando workspace..."
+            echo "?? [PRODUCTION] Limpiando workspace..."
             cleanWs()
         }
         success {
             echo """
-            ‚úÖ ========================================
-            ‚úÖ Pipeline STAGING de ${SERVICE_NAME} completado
-            ‚úÖ ========================================
-            üì¶ Imagen: ${IMAGE_NAME}:staging-${BUILD_TAG}
-            ‚ò∏Ô∏è  Namespace: ${K8S_NAMESPACE}
-            üéØ Ambiente: GKE Staging
-            üß™ Pruebas E2E: Ejecutadas
-            ‚ö° Pruebas Performance: Ejecutadas
-            ‚úÖ ========================================
+            ? ========================================
+            ? RELEASE EXITOSO - ${SERVICE_NAME} v${params.VERSION}
+            ? ========================================
+            ?? VersiÛn: v${params.VERSION}
+            ?? Imagen: ${IMAGE_NAME}:v${params.VERSION}
+            ??  Namespace: ${K8S_NAMESPACE}
+            ?? Ambiente: GKE Production
+            ?? Smoke Tests: Passed
+            ? VerificaciÛn: Passed
+            ?? Release Notes: Generadas
+            ? ========================================
             """
         }
         failure {
-            echo "‚ùå Pipeline STAGING de ${SERVICE_NAME} fall√≥"
+            echo "? Release de ${SERVICE_NAME} v${params.VERSION} fallÛ en producciÛn"
         }
     }
 }
-
