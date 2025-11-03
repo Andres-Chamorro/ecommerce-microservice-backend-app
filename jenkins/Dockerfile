@@ -24,6 +24,12 @@ RUN apt-get install -y python3 python3-pip python3-venv
 # Instalar Locust globalmente (seguro en contenedor)
 RUN pip3 install --break-system-packages locust
 
+# Instalar Google Cloud SDK
+RUN curl -O https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-cli-linux-x86_64.tar.gz && \
+    tar -xf google-cloud-cli-linux-x86_64.tar.gz -C /root && \
+    /root/google-cloud-sdk/install.sh --quiet && \
+    rm google-cloud-cli-linux-x86_64.tar.gz
+
 # Limpiar cache
 RUN apt-get clean && rm -rf /var/lib/apt/lists/*
 
