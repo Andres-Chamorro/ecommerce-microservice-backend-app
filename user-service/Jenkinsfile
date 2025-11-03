@@ -203,6 +203,9 @@ EOF
                     if (fileExists('tests/e2e/pom.xml')) {
                         dir('tests/e2e') {
                             sh '''
+                                export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+                                export PATH=$JAVA_HOME/bin:$PATH
+                                
                                 SERVICE_URL=$(cat /tmp/service_url.txt)
                                 echo "Ejecutando pruebas E2E contra: http://$SERVICE_URL:${SERVICE_PORT}"
                                 mvn test -Dtest=*E2ETest -Dservice.url=http://$SERVICE_URL:${SERVICE_PORT} -Dservice.name=${SERVICE_NAME} || echo "Algunas pruebas E2E fallaron"
