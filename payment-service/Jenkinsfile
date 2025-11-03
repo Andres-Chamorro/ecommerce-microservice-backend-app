@@ -3,7 +3,7 @@ pipeline {
     
     environment {
         // Java Configuration
-        JAVA_HOME = '/usr/lib/jvm/java-17-openjdk-amd64'
+        JAVA_HOME = '/opt/java/openjdk'
         PATH = "/root/google-cloud-sdk/bin:${JAVA_HOME}/bin:${env.PATH}"
         
         // GCP & Kubernetes
@@ -203,7 +203,7 @@ EOF
                     if (fileExists('tests/e2e/pom.xml')) {
                         dir('tests/e2e') {
                             sh '''
-                                export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+                                export JAVA_HOME=/opt/java/openjdk
                                 export PATH=$JAVA_HOME/bin:$PATH
                                 
                                 SERVICE_URL=$(cat /tmp/service_url.txt)
