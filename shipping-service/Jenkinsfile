@@ -162,18 +162,30 @@ EOF
                 script {
                     echo "🧪 [STAGING] Ejecutando pruebas E2E..."
                     
-                    sh """                        
-                        # Obtener la URL del servicio
-                        SERVICE_URL=\$(kubectl get svc ${SERVICE_NAME} -n ${K8S_NAMESPACE} -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo 'localhost')
-                        echo "Service URL: \$SERVICE_URL:${SERVICE_PORT}"
+                    sh """
+                        # Para el informe: Usar port-forward para acceder al servicio
+                        echo "🧪 [INFORME] Iniciando port-forward para pruebas E2E..."
+                        
+                        # Iniciar port-forward en background
+                        kubectl port-forward svc/${SERVICE_NAME} 8080:${SERVICE_PORT} -n ${K8S_NAMESPACE} &
+                        PORT_FORWARD_PID=\$!
+                        
+                        # Esperar a que port-forward esté listo
+                        sleep 10
+                        
+                        echo "Service URL: localhost:8080 (via port-forward)"
                         
                         # Ejecutar pruebas E2E si existen
                         if [ -d tests/e2e ]; then
                             cd tests/e2e
-                            mvn test -Dtest=*E2ETest -Dservice.url=http://\$SERVICE_URL:${SERVICE_PORT} || echo "⚠️ Algunas pruebas E2E fallaron"
+                            mvn test -Dtest=*E2ETest -Dservice.url=http://localhost:8080 || echo "⚠️ Algunas pruebas E2E fallaron"
                         else
                             echo "ℹ️ No hay pruebas E2E configuradas"
                         fi
+                        
+                        # Terminar port-forward
+                        kill \$PORT_FORWARD_PID 2>/dev/null || true
+                        sleep 2
                     """
                 }
             }
@@ -192,20 +204,33 @@ EOF
                 script {
                     echo "⚡ [STAGING] Ejecutando pruebas de rendimiento con Locust..."
                     
-                    sh """                        
-                        # Obtener la URL del servicio
-                        SERVICE_URL=\$(kubectl get svc ${SERVICE_NAME} -n ${K8S_NAMESPACE} -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo 'localhost')
+                    sh """
+                        # Para el informe: Usar port-forward para pruebas de performance
+                        echo "🧪 [INFORME] Iniciando port-forward para pruebas de performance..."
+                        
+                        # Iniciar port-forward en background
+                        kubectl port-forward svc/${SERVICE_NAME} 8080:${SERVICE_PORT} -n ${K8S_NAMESPACE} &
+                        PORT_FORWARD_PID=\$!
+                        
+                        # Esperar a que port-forward esté listo
+                        sleep 10
+                        
+                        echo "Service URL: localhost:8080 (via port-forward)"
                         
                         if [ -f tests/performance/locustfile.py ]; then
                             cd tests/performance
                             
-                            # Ejecutar Locust en modo headless (sin UI) - locust ya esta instalado en Jenkins
-                            locust -f locustfile.py --host=http://\$SERVICE_URL:${SERVICE_PORT} \\
+                            # Ejecutar Locust en modo headless (sin UI)
+                            locust -f locustfile.py --host=http://localhost:8080 \\
                                 --users 50 --spawn-rate 5 --run-time 2m --headless \\
                                 --html=locust-report.html || echo "⚠️ Pruebas de rendimiento completadas con warnings"
                         else
                             echo "ℹ️ No hay pruebas de rendimiento configuradas"
                         fi
+                        
+                        # Terminar port-forward
+                        kill \$PORT_FORWARD_PID 2>/dev/null || true
+                        sleep 2
                     """
                 }
             }

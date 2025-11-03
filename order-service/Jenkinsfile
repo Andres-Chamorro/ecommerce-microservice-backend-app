@@ -201,43 +201,32 @@ EOF
                     echo "⚡ [STAGING] Ejecutando pruebas de rendimiento con Locust..."
                     
                     sh """
-                        # Esperar hasta 2 minutos por la IP del LoadBalancer
-                        echo "⏳ Esperando IP externa del LoadBalancer..."
-                        MAX_ATTEMPTS=24
-                        ATTEMPT=0
-                        EXTERNAL_IP=""
+                        # Para el informe: Usar port-forward para pruebas de performance
+                        echo "🧪 [INFORME] Iniciando port-forward para pruebas de performance..."
                         
-                        while [ \$ATTEMPT -lt \$MAX_ATTEMPTS ]; do
-                            EXTERNAL_IP=\$(kubectl get svc ${SERVICE_NAME} -n ${K8S_NAMESPACE} -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null)
-                            
-                            if [ -n "\$EXTERNAL_IP" ] && [ "\$EXTERNAL_IP" != "<pending>" ]; then
-                                echo "✅ LoadBalancer IP obtenida: \$EXTERNAL_IP"
-                                break
-                            fi
-                            
-                            ATTEMPT=\$((ATTEMPT + 1))
-                            echo "⏳ Intento \$ATTEMPT/\$MAX_ATTEMPTS - Esperando 5 segundos..."
-                            sleep 5
-                        done
+                        # Iniciar port-forward en background
+                        kubectl port-forward svc/${SERVICE_NAME} 8080:${SERVICE_PORT} -n ${K8S_NAMESPACE} &
+                        PORT_FORWARD_PID=\$!
                         
-                        if [ -z "\$EXTERNAL_IP" ] || [ "\$EXTERNAL_IP" = "<pending>" ]; then
-                            echo "⚠️ LoadBalancer IP no disponible después de 2 minutos - Saltando pruebas de performance"
-                            echo "ℹ️ Las pruebas de performance requieren acceso externo al servicio"
-                            exit 0
-                        fi
+                        # Esperar a que port-forward esté listo
+                        sleep 10
                         
-                        SERVICE_URL=\$EXTERNAL_IP
+                        echo "Service URL: localhost:8080 (via port-forward)"
                         
                         if [ -f tests/performance/locustfile.py ]; then
                             cd tests/performance
                             
-                            # Ejecutar Locust en modo headless (sin UI) - locust ya esta instalado en Jenkins
-                            locust -f locustfile.py --host=http://\$SERVICE_URL:${SERVICE_PORT} \\
+                            # Ejecutar Locust en modo headless (sin UI)
+                            locust -f locustfile.py --host=http://localhost:8080 \\
                                 --users 50 --spawn-rate 5 --run-time 2m --headless \\
                                 --html=locust-report.html || echo "⚠️ Pruebas de rendimiento completadas con warnings"
                         else
                             echo "ℹ️ No hay pruebas de rendimiento configuradas"
                         fi
+                        
+                        # Terminar port-forward
+                        kill \$PORT_FORWARD_PID 2>/dev/null || true
+                        sleep 2
                     """
                 }
             }
