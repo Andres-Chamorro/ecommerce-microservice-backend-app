@@ -216,7 +216,7 @@ EOF
                         
                         # Smoke Test 2: API Endpoint básico
                         echo "Test 2: API Endpoint..."
-                        curl -f http://\$SERVICE_URL/api/${SERVICE_NAME#*-} || echo "?? API endpoint respondió con error"
+                        curl -f http://\$SERVICE_URL/api/$(echo $SERVICE_NAME | sed 's/.*-//') || echo "?? API endpoint respondió con error"
                         
                         # Smoke Test 3: Verificar versión
                         echo "Test 3: Version Check..."
