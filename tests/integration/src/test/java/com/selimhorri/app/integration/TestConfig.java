@@ -1,4 +1,4 @@
-﻿package com.selimhorri.app.integration;
+package com.selimhorri.app.integration;
 
 /**
  * ConfiguraciÃ³n centralizada para las pruebas de integraciÃ³n
