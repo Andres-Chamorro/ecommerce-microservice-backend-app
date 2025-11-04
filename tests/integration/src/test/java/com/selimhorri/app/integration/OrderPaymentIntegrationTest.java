@@ -21,7 +21,7 @@ public class OrderPaymentIntegrationTest {
 
     @BeforeAll
     static void setup() {
-        RestAssured.baseURI = "http://localhost";
+        // No configurar baseURI, usaremos URLs completas desde TestConfig
     }
 
     @Test
@@ -33,7 +33,7 @@ public class OrderPaymentIntegrationTest {
         
         // 1. Order Service proporciona pedidos (datos que Payment necesita)
         given()
-                .port(8300)
+                .baseUri(TestConfig.ORDER_SERVICE_URL)
                 .when()
                 .get("/order-service/api/orders")
                 .then()
@@ -43,7 +43,7 @@ public class OrderPaymentIntegrationTest {
         // 2. Payment Service está disponible para recibir solicitudes de pago
         // Nota: El servicio tiene errores de datos pero está activo y comunicable
         given()
-                .port(8400)
+                .baseUri(TestConfig.PAYMENT_SERVICE_URL)
                 .when()
                 .get("/payment-service/actuator/health")
                 .then()
@@ -63,7 +63,7 @@ public class OrderPaymentIntegrationTest {
         
         // 1. Obtener pedidos desde Order Service (fuente de datos)
         var ordersResponse = given()
-                .port(8300)
+                .baseUri(TestConfig.ORDER_SERVICE_URL)
                 .when()
                 .get("/order-service/api/orders")
                 .then()
@@ -74,7 +74,7 @@ public class OrderPaymentIntegrationTest {
 
         // 2. Payment Service está activo para procesar pagos de esos pedidos
         given()
-                .port(8400)
+                .baseUri(TestConfig.PAYMENT_SERVICE_URL)
                 .when()
                 .get("/payment-service/actuator/health")
                 .then()
@@ -95,7 +95,7 @@ public class OrderPaymentIntegrationTest {
         
         // 1. Order Service mantiene pedidos
         given()
-                .port(8300)
+                .baseUri(TestConfig.ORDER_SERVICE_URL)
                 .when()
                 .get("/order-service/api/orders")
                 .then()
@@ -104,7 +104,7 @@ public class OrderPaymentIntegrationTest {
 
         // 2. Payment Service está disponible para asociar pagos a pedidos
         given()
-                .port(8400)
+                .baseUri(TestConfig.PAYMENT_SERVICE_URL)
                 .when()
                 .get("/payment-service/actuator/health")
                 .then()

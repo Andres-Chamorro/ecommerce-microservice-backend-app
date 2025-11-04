@@ -22,7 +22,7 @@ public class UserOrderIntegrationTest {
 
     @BeforeAll
     static void setup() {
-        RestAssured.baseURI = "http://localhost";
+        // No configurar baseURI, usaremos URLs completas desde TestConfig
     }
 
     @Test
@@ -34,7 +34,7 @@ public class UserOrderIntegrationTest {
         
         // 1. User Service responde con usuarios (datos que Order Service necesita)
         given()
-                .port(8700)
+                .baseUri(TestConfig.USER_SERVICE_URL)
                 .when()
                 .get("/user-service/api/users")
                 .then()
@@ -43,7 +43,7 @@ public class UserOrderIntegrationTest {
         
         // 2. Order Service responde con pedidos (que están asociados a usuarios)
         given()
-                .port(8300)
+                .baseUri(TestConfig.ORDER_SERVICE_URL)
                 .when()
                 .get("/order-service/api/orders")
                 .then()
@@ -62,7 +62,7 @@ public class UserOrderIntegrationTest {
         
         // 1. Obtener usuarios desde User Service (fuente de datos)
         var usersResponse = given()
-                .port(8700)
+                .baseUri(TestConfig.USER_SERVICE_URL)
                 .when()
                 .get("/user-service/api/users")
                 .then()
@@ -73,7 +73,7 @@ public class UserOrderIntegrationTest {
 
         // 2. Obtener pedidos desde Order Service (consumidor de datos de User)
         var ordersResponse = given()
-                .port(8300)
+                .baseUri(TestConfig.ORDER_SERVICE_URL)
                 .when()
                 .get("/order-service/api/orders")
                 .then()
@@ -96,7 +96,7 @@ public class UserOrderIntegrationTest {
         
         // 1. User Service proporciona datos de usuarios
         given()
-                .port(8700)
+                .baseUri(TestConfig.USER_SERVICE_URL)
                 .when()
                 .get("/user-service/api/users")
                 .then()
@@ -105,7 +105,7 @@ public class UserOrderIntegrationTest {
 
         // 2. Order Service mantiene pedidos asociados a esos usuarios
         given()
-                .port(8300)
+                .baseUri(TestConfig.ORDER_SERVICE_URL)
                 .when()
                 .get("/order-service/api/orders")
                 .then()

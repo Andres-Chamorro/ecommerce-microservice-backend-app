@@ -1,4 +1,4 @@
-pipeline {
+﻿pipeline {
     agent any
     
     environment {
@@ -185,19 +185,61 @@ EOFYAML
             }
             steps {
                 script {
-                    echo "[DEV] Ejecutando pruebas de integracion..."
-                    dir('tests/integration') {
+                    echo "[DEV] Configurando port-forwards para pruebas de integraciÃ³n..."
+                    
+                    // Iniciar port-forwards en background
+                    sh '''
+                        # FunciÃ³n para hacer port-forward en background
+                        start_port_forward() {
+                            SERVICE=$1
+                            PORT=$2
+                            NAMESPACE=${3:-ecommerce-dev}
+                            
+                            echo "Port-forwarding $SERVICE:$PORT..."
+                            kubectl port-forward -n $NAMESPACE svc/$SERVICE $PORT:$PORT > /dev/null 2>&1 &
+                            PF_PID=$!
+                            echo $PF_PID >> /tmp/port-forward-pids.txt
+                            sleep 2
+                        }
+                        
+                        # Limpiar port-forwards anteriores
+                        rm -f /tmp/port-forward-pids.txt
+                        
+                        # Iniciar port-forwards para todos los servicios
+                        start_port_forward user-service 8700
+                        start_port_forward order-service 8300
+                        start_port_forward payment-service 8400
+                        start_port_forward product-service 8500
+                        start_port_forward shipping-service 8600
+                        start_port_forward favourite-service 8800
+                        
+                        echo "âœ… Port-forwards configurados"
+                        sleep 3
+                    '''
+                    
+                    try {
+                        echo "[DEV] Ejecutando pruebas de integraciÃ³n..."
+                        dir('tests/integration') {
+                            sh '''
+                                if [ -f pom.xml ]; then
+                                    # Las pruebas ahora pueden usar localhost gracias a port-forward
+                                    mvn test -Dtest=*IntegrationTest || echo "âš ï¸ Algunas pruebas de integraciÃ³n fallaron"
+                                else
+                                    echo "No hay pruebas de integraciÃ³n configuradas"
+                                fi
+                            '''
+                        }
+                    } finally {
+                        // Limpiar port-forwards
                         sh '''
-                            if [ -f pom.xml ]; then
-                                # Configurar URLs de servicios en Minikube
-                                export USER_SERVICE_URL="http://user-service.ecommerce-dev:8700"
-                                export ORDER_SERVICE_URL="http://user-service.ecommerce-dev:8300"
-                                export PRODUCT_SERVICE_URL="http://product-service.ecommerce-dev:8500"
-                                
-                                mvn test -Dtest=*IntegrationTest || echo "Algunas pruebas de integracion fallaron"
-                            else
-                                echo "No hay pruebas de integracion configuradas"
+                            echo "Limpiando port-forwards..."
+                            if [ -f /tmp/port-forward-pids.txt ]; then
+                                while read pid; do
+                                    kill $pid 2>/dev/null || true
+                                done < /tmp/port-forward-pids.txt
+                                rm -f /tmp/port-forward-pids.txt
                             fi
+                            echo "âœ… Port-forwards limpiados"
                         '''
                     }
                 }
@@ -251,3 +293,4 @@ EOFYAML
         }
     }
 }
+

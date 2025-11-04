@@ -17,7 +17,7 @@ public class OrderShippingIntegrationTest {
 
     @BeforeAll
     static void setup() {
-        RestAssured.baseURI = "http://localhost";
+        // No configurar baseURI, usaremos URLs completas desde TestConfig
     }
 
     @Test
@@ -25,7 +25,7 @@ public class OrderShippingIntegrationTest {
     void testCreateOrderAndGenerateShipping() {
         // INTEGRACIÓN: Verificar que Order Service tiene pedidos
         given()
-                .port(8300)
+                .baseUri(TestConfig.ORDER_SERVICE_URL)
                 .when()
                 .get("/order-service/api/orders")
                 .then()
@@ -35,7 +35,7 @@ public class OrderShippingIntegrationTest {
         // INTEGRACIÓN: Verificar que Shipping Service está disponible
         // Nota: El servicio puede tener errores internos (500) pero está activo
         given()
-                .port(8600)
+                .baseUri(TestConfig.SHIPPING_SERVICE_URL)
                 .when()
                 .get("/shipping-service/actuator/health")
                 .then()
@@ -48,7 +48,7 @@ public class OrderShippingIntegrationTest {
     void testUpdateShippingStatusShouldReflectInOrder() {
         // INTEGRACIÓN: Obtener pedidos desde Order Service
         var ordersResponse = given()
-                .port(8300)
+                .baseUri(TestConfig.ORDER_SERVICE_URL)
                 .when()
                 .get("/order-service/api/orders")
                 .then()
@@ -60,7 +60,7 @@ public class OrderShippingIntegrationTest {
         // INTEGRACIÓN: Verificar que Shipping Service está activo
         // (puede tener errores de datos pero el servicio está corriendo)
         given()
-                .port(8600)
+                .baseUri(TestConfig.SHIPPING_SERVICE_URL)
                 .when()
                 .get("/shipping-service/actuator/health")
                 .then()
@@ -76,7 +76,7 @@ public class OrderShippingIntegrationTest {
     void testOrderWithoutPaymentShouldNotGenerateShipping() {
         // INTEGRACIÓN: Verificar que Order Service responde con pedidos
         given()
-                .port(8300)
+                .baseUri(TestConfig.ORDER_SERVICE_URL)
                 .when()
                 .get("/order-service/api/orders")
                 .then()
@@ -85,7 +85,7 @@ public class OrderShippingIntegrationTest {
 
         // INTEGRACIÓN: Verificar que Shipping Service está disponible
         given()
-                .port(8600)
+                .baseUri(TestConfig.SHIPPING_SERVICE_URL)
                 .when()
                 .get("/shipping-service/actuator/health")
                 .then()

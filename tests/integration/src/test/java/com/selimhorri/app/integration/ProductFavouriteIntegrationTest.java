@@ -17,7 +17,7 @@ public class ProductFavouriteIntegrationTest {
 
     @BeforeAll
     static void setup() {
-        RestAssured.baseURI = "http://localhost";
+        // No configurar baseURI, usaremos URLs completas desde TestConfig
     }
 
     @Test
@@ -25,7 +25,7 @@ public class ProductFavouriteIntegrationTest {
     void testCreateProductAndAddToFavourites() {
         // INTEGRACIÓN: Verificar que Product Service tiene productos
         given()
-                .port(8500)
+                .baseUri(TestConfig.PRODUCT_SERVICE_URL)
                 .when()
                 .get("/product-service/api/products")
                 .then()
@@ -35,7 +35,7 @@ public class ProductFavouriteIntegrationTest {
         // INTEGRACIÓN: Verificar que Favourite Service está disponible
         // Nota: El servicio puede tener errores internos (500) pero está activo
         given()
-                .port(8800)
+                .baseUri(TestConfig.FAVOURITE_SERVICE_URL)
                 .when()
                 .get("/favourite-service/actuator/health")
                 .then()
@@ -48,7 +48,7 @@ public class ProductFavouriteIntegrationTest {
     void testProductCanHaveMultipleFavourites() {
         // INTEGRACIÓN: Obtener productos desde Product Service
         var productsResponse = given()
-                .port(8500)
+                .baseUri(TestConfig.PRODUCT_SERVICE_URL)
                 .when()
                 .get("/product-service/api/products")
                 .then()
@@ -60,7 +60,7 @@ public class ProductFavouriteIntegrationTest {
         // INTEGRACIÓN: Verificar que Favourite Service está activo
         // (puede tener errores de datos pero el servicio está corriendo)
         given()
-                .port(8800)
+                .baseUri(TestConfig.FAVOURITE_SERVICE_URL)
                 .when()
                 .get("/favourite-service/actuator/health")
                 .then()
@@ -76,7 +76,7 @@ public class ProductFavouriteIntegrationTest {
     void testDeleteProductShouldHandleAssociatedFavourites() {
         // INTEGRACIÓN: Verificar que Product Service responde con productos
         given()
-                .port(8500)
+                .baseUri(TestConfig.PRODUCT_SERVICE_URL)
                 .when()
                 .get("/product-service/api/products")
                 .then()
@@ -85,7 +85,7 @@ public class ProductFavouriteIntegrationTest {
 
         // INTEGRACIÓN: Verificar que Favourite Service está disponible
         given()
-                .port(8800)
+                .baseUri(TestConfig.FAVOURITE_SERVICE_URL)
                 .when()
                 .get("/favourite-service/actuator/health")
                 .then()
